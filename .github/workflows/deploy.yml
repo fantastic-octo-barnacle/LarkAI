@@ -65,6 +65,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE_DIGEST: ${{ needs.build.outputs.digest }}
           LARKAI_ENV: ${{ secrets.LARKAI_ENV }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_REDIRECT_URI: ${{ secrets.FEISHU_REDIRECT_URI }}
+          FEISHU_WIKI_NODE_TOKEN: ${{ secrets.FEISHU_WIKI_NODE_TOKEN }}
+          FEISHU_BITABLE_APP_TOKEN: ${{ secrets.FEISHU_BITABLE_APP_TOKEN }}
+          FEISHU_BITABLE_SUBMIT_TABLE_ID: ${{ secrets.FEISHU_BITABLE_SUBMIT_TABLE_ID }}
+          FEISHU_BITABLE_TASKS_TABLE_ID: ${{ secrets.FEISHU_BITABLE_TASKS_TABLE_ID }}
+          FEISHU_ADMIN_OPEN_IDS: ${{ secrets.FEISHU_ADMIN_OPEN_IDS }}
+          FEISHU_SCOPES: ${{ secrets.FEISHU_SCOPES }}
         shell: bash
         run: |
           set -euo pipefail
@@ -73,10 +82,8 @@ jobs:
           ssh "${ssh_opts[@]}" "$remote" 'umask 077; mkdir -p ~/larkai/incoming'
           printf 'LARKAI_IMAGE=ghcr.io/fantastic-octo-barnacle/larkai@%s\n' "$IMAGE_DIGEST" > image.env
           umask 077
-          printf '%s\n' "$LARKAI_ENV" > runtime.env
+          python3 deploy/runtime_env.py
           trap 'rm -f runtime.env ~/.ssh/deploy' EXIT
-          # Blank means retain the server-owned .env, never erase it.
-          if [[ -z "$LARKAI_ENV" ]]; then : > runtime.env; fi
           scp "${ssh_opts[@]}" deploy/compose.yml image.env runtime.env "$remote:larkai/incoming/"
           scp "${ssh_opts[@]}" deploy/apply.sh deploy/merge_env.py "$remote:larkai/"
           # Use a disposable registry config; don't overwrite other apps' credentials.

@@ -163,3 +163,13 @@ These on-host snapshots do not replace an off-host backup policy. The workflow
 checks container health (origin rejects requests without Access tokens) and the
 public Cloudflare login challenge. End-to-end team sign-in must be checked in a
 browser with an authorized account.
+
+### Individual GitHub secrets
+
+Instead of `LARKAI_ENV`, the production environment (or repository) can hold
+individual secrets named `FEISHU_APP_ID`, `FEISHU_APP_SECRET`,
+`FEISHU_REDIRECT_URI`, `FEISHU_WIKI_NODE_TOKEN`, `FEISHU_BITABLE_APP_TOKEN`,
+`FEISHU_BITABLE_SUBMIT_TABLE_ID`, `FEISHU_BITABLE_TASKS_TABLE_ID`,
+`FEISHU_ADMIN_OPEN_IDS`, and `FEISHU_SCOPES`. Non-empty individual secrets
+override the corresponding values in `LARKAI_ENV`; unspecified values on the
+server are preserved. Run Deploy LarkAI after changing secrets.
