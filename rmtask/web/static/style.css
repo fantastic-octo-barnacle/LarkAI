@@ -114,9 +114,14 @@ label.chk-row { display: inline-flex; flex-direction: row; align-items: center; 
 .task-card .actions { margin-top: auto; }
 
 /* -- workload: per-individual workload -- */
-.wl-row > summary { cursor: pointer; font-weight: 500; }
-.wl-row > summary .badge { margin-left: 6px; }
-.wl-tasks { margin: 8px 0 4px; padding-left: 20px; list-style: square; }
+.member-link { display: inline-flex; align-items: center; gap: 6px; }
+.member-link:hover b { text-decoration: underline; }
+.wl-member { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); margin: 10px 0; }
+.wl-member > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 14px; }
+.wl-member > summary .muted { flex-basis: 100%; }
+.wl-member[open] > summary { border-bottom: 1px solid var(--border); }
+.wl-member.wl-flash { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(76, 125, 255, 0.25); }
+.wl-tasks { margin: 0; padding: 10px 14px 14px 30px; list-style: square; }
 .wl-tasks li { padding: 3px 0; }
 
 /* -- member picker: toggle list + search + temp-save text block -- */

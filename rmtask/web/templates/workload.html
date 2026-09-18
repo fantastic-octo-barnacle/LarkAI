@@ -2,7 +2,7 @@
 {% block title %}Workload{% endblock %}
 {% block content %}
 <h1>Workload</h1>
-<p class="muted small">Per-individual workload derived from the task board (Bitable mirror + Feishu tasks).</p>
+<p class="muted small">Per-individual workload derived from the task board (Bitable mirror + Feishu tasks). Click a member to expand their task list below.</p>
 
 <div class="stat-grid">
   <div class="stat"><span class="num">{{ workload.stats.members }}</span><span class="lbl">members with work</span></div>
@@ -28,21 +28,7 @@
     <tbody>
     {% for m in workload.members %}
       <tr>
-        <td>
-          <details class="wl-row">
-            <summary><b>{{ m.name }}</b> <span class="badge">{{ m.total }} task{{ 's' if m.total != 1 }}</span></summary>
-            <ul class="wl-tasks">
-              {% for t in m.tasks %}
-              <li>
-                <span class="badge st-{{ t.status }}">{{ t.status }}</span>
-                <span class="badge prio-{{ (t.priority or 'NORMAL')|lower }}">{{ t.priority or 'NORMAL' }}</span>
-                {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.title }}</a>{% else %}<b>{{ t.title }}</b>{% endif %}
-                <span class="muted small">due {{ t.due|dt }}</span>
-              </li>
-              {% endfor %}
-            </ul>
-          </details>
-        </td>
+        <td><a class="member-link" href="#m-{{ loop.index }}" data-member-link="m-{{ loop.index }}"><b>{{ m.name }}</b> <span class="badge">{{ m.total }} task{{ 's' if m.total != 1 }}</span></a></td>
         <td><b>{{ m.active }}</b></td>
         <td>{{ m.pending }}</td>
         <td>{{ m.in_progress }}</td>
@@ -56,6 +42,31 @@
     </tbody>
   </table>
 </div>
+
+<h2>Member details</h2>
+{% for m in workload.members %}
+  <details class="wl-member" id="m-{{ loop.index }}">
+    <summary>
+      <b>{{ m.name }}</b>
+      <span class="badge">{{ m.total }} task{{ 's' if m.total != 1 }}</span>
+      <span class="badge st-pending">active {{ m.active }}</span>
+      <span class="badge st-completed">done {{ m.completed }}</span>
+      <span class="badge prio-high">urgent {{ m.urgent }}</span>
+      <span class="badge st-cancelled">overdue {{ m.overdue }}</span>
+      <span class="muted small">next due {{ m.next_due|dt }} · {{ m.divisions|join(', ') }}</span>
+    </summary>
+    <ul class="wl-tasks">
+      {% for t in m.tasks %}
+      <li>
+        <span class="badge st-{{ t.status }}">{{ t.status }}</span>
+        <span class="badge prio-{{ (t.priority or 'NORMAL')|lower }}">{{ t.priority or 'NORMAL' }}</span>
+        {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.title }}</a>{% else %}<b>{{ t.title }}</b>{% endif %}
+        <span class="muted small">due {{ t.due|dt }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+{% endfor %}
 {% else %}
 <p class="muted">No assigned tasks yet — run <b>Sync</b> to load the task board.</p>
 {% endif %}

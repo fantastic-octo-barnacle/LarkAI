@@ -206,6 +206,10 @@ class SmokeTest(unittest.TestCase):
         self.assertIn(b"Workload", resp.data)
         self.assertIn(b"Vision", resp.data)
         self.assertIn(b"Calibrate aiming pipeline", resp.data)
+        self.assertIn(b"Member details", resp.data)
+        self.assertIn(b'<details class="wl-member" id="m-1"', resp.data)
+        self.assertIn(b'data-member-link="m-1"', resp.data)
+        self.assertNotIn(b'<details class="wl-row"', resp.data)
 
     def test_api_workload(self) -> None:
         self.login()

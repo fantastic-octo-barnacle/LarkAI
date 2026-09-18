@@ -133,3 +133,26 @@ function lsSet(key, value) {
   if (copy) copy.addEventListener('click', function () { copyText(draft.value); });
   refresh();
 })();
+
+// -- Workload: member link in summary table opens matching detail block ------
+(function initWorkloadMemberLinks() {
+  var links = document.querySelectorAll('.member-link[data-member-link]');
+  if (!links.length) return;
+  links.forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      var details = document.getElementById(link.getAttribute('data-member-link'));
+      if (!details) return;
+      e.preventDefault();
+      document.querySelectorAll('details.wl-member[open]').forEach(function (d) {
+        if (d !== details) d.open = false;
+      });
+      details.open = true;
+      var summary = details.querySelector('summary');
+      if (summary) summary.focus({ preventScroll: true });
+      details.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      details.classList.remove('wl-flash');
+      void details.offsetWidth;
+      details.classList.add('wl-flash');
+    });
+  });
+})();
