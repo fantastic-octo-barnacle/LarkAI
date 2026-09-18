@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<div class="cols">
+  <section class="card">
+    <h2>Email notifications</h2>
+    <p class="muted">SMTP: {% if smtp_configured %}<span class="badge st-sent">configured</span> {{ smtp_host }}{% else %}<span class="badge st-dry_run">not configured</span> — set SMTP_* in .env for real delivery{% endif %}</p>
+    <form method="post" class="grid-form">
+      <label class="full">Recipients (space separated)
+        <input name="email_recipients" value="{{ email_recipients }}" placeholder="manager@example.com">
+      </label>
+      <div class="full"><button class="btn primary" type="submit">Save recipients</button></div>
+    </form>
+    <form method="post">
+      <input type="hidden" name="action" value="test">
+      <button class="btn" type="submit">Send test notification</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Run mode</h2>
+    <p>Current provider: <span class="badge st-{{ 'sent' if settings.mode == 'live' else 'dry_run' }}">{{ settings.mode }}</span></p>
+    <p class="muted">Switch to real Feishu data by setting <code>FEISHU_MODE=live</code> plus App ID / App Secret / redirect URI in <code>.env</code>.</p>
+  </section>
+</div>
+{% endblock %}

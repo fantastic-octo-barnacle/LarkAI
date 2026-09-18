@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+{% block content %}
+<h1>Task board</h1>
+{% if settings and settings.bitable_submit_table_id %}
+<p class="muted small">New tasks are submitted to <b>Bitable</b> when allowed, otherwise the <b>Feishu task API</b> (auto-fallback).</p>
+{% else %}
+<p class="muted small">New tasks are submitted to the <b>Feishu task API</b>.</p>
+{% endif %}
+
+<details class="card create-card">
+  <summary><b>＋ New task</b> ({{ 'submits to Bitable, auto-fallback to Feishu task API' if settings and settings.bitable_submit_table_id else 'submits to Feishu task API' }})</summary>
+  <form method="post" action="{{ url_for('main.task_create') }}" class="grid-form">
+    <label>Title<input name="title" required placeholder="e.g. Polish navigation stack"></label>
+    <label>兵种类型
+      <select name="category">
+        <option value="">—</option>
+        {% for o in task_options.types %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Priority<select name="priority"><option>NORMAL</option><option>HIGH</option><option>URGENT</option></select></label>
+    <label>Due<input type="datetime-local" name="due"></label>
+    <label>Assignee
+      <select name="owner_open_id">
+        <option value="">{% if current_user %}Me ({{ current_user.name }}){% else %}— (blank = Feishu default){% endif %}</option>
+        {% for a in assignees %}<option value="{{ a.open_id }}">{{ a.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>研发组别（可多选）
+      <select name="divisions" multiple size="4">
+        {% for o in task_options.divisions %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="full">任务需求 (description)<textarea name="description" rows="3" placeholder="What is the requirement? Be specific (Bitable: 任务需求…)"></textarea></label>
+    <label class="full">备注 (optional)<textarea name="remark" rows="2"></textarea></label>
+    <div class="full"><button class="btn primary" type="submit">Submit task</button></div>
+  </form>
+</details>
+
+<form class="filter-bar" method="get" action="{{ url_for('main.tasks_page') }}">
+  <label class="chk-row"><b>Group</b>
+    <select name="group">
+      <option value="status" {% if group == 'status' %}selected{% endif %}>By status</option>
+      <option value="source" {% if group == 'source' %}selected{% endif %}>By type (feishu / bitable)</option>
+      <option value="division" {% if group == 'division' %}selected{% endif %}>By division (研发组别)</option>
+      <option value="none" {% if group == 'none' %}selected{% endif %}>Flat list</option>
+    </select>
+  </label>
+  <select name="status">
+    <option value="">all statuses</option>
+    {% for s in ['pending', 'in_progress', 'completed', 'cancelled'] %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+  <input type="search" name="q" placeholder="Search…" value="{{ q }}">
+  <button class="btn" type="submit">Filter</button>
+</form>
+
+{% set ns = namespace(count=0) %}
+{% for g in task_groups %}
+  <details class="task-group" {% if g['tasks'] %}open{% endif %}>
+    <summary>
+      <b>{{ g.label }}</b>
+      <span class="badge">{{ g['tasks']|length }} task{{ 's' if g['tasks']|length != 1 }}</span>
+    </summary>
+    <div class="task-grid">
+      {% for t in g['tasks'] %}
+        {% set ns.count = ns.count + 1 %}
+        <article class="task-card">
+          <div class="task-card-head">
+            {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.title }}</a>{% else %}<b>{{ t.title }}</b>{% endif %}
+            <span class="badge prio-{{ (t.priority or 'NORMAL')|lower }}">{{ t.priority or 'NORMAL' }}</span>
+            <span class="badge st-{{ t.status }}">{{ t.status }}</span>
+          </div>
+          {% if t.description %}<p class="muted small">{{ t.description[:160] }}</p>{% endif %}
+          <div class="task-meta muted small">
+            <span>due {{ t.due|dt }}</span>
+            {% if t.owner_name %}<span>owner {{ t.owner_name }}</span>{% endif %}
+            {% if t.source == 'bitable' %}<span>Bitable</span>{% elif t.source %}<span>{{ t.source }}</span>{% endif %}
+          </div>
+          <div class="actions">
+            {% if t.status in ('pending', 'in_progress') and (t.source in ('feishu', '') or (t.source == 'bitable' and settings and settings.bitable_tasks_table_id)) %}
+              <form class="inline" method="post" action="{{ url_for('main.task_complete', guid=t.guid) }}"><button class="btn small" type="submit">Complete</button></form>
+              <form class="inline" method="post" action="{{ url_for('main.task_cancel', guid=t.guid) }}"><button class="btn danger small" data-confirm="Cancel task '{{ t.title }}'? It will be updated in Feishu." type="submit">Cancel</button></form>
+            {% endif %}
+            {% if t.source == 'bitable' and not (settings and settings.bitable_tasks_table_id) %}<span class="muted small">mirrored (read-only until write scopes granted)</span>{% endif %}
+            {% if is_admin and t.source in ('feishu', 'bitable', '') %}<form class="inline" method="post" action="{{ url_for('main.task_delete', guid=t.guid) }}"><button class="btn danger small" data-confirm="Delete task '{{ t.title }}' permanently?{% if t.source == 'bitable' %} It will be removed from the Bitable base.{% endif %}" type="submit">Delete</button></form>{% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </details>
+{% else %}
+  {% if tasks %}
+    <p class="muted">No tasks match these filters.</p>
+  {% else %}
+    <p class="muted">No tasks yet — submit one above or run <b>Sync</b>.</p>
+  {% endif %}
+{% endfor %}
+{% endblock %}

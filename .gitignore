@@ -1,0 +1,12 @@
+.env
+*.db
+*.sqlite3
+__pycache__/
+*.pyc
+.venv/
+venv/
+logs/
+data/mock_state.json
+data/rmtask.db
+/site/
+.DS_Store

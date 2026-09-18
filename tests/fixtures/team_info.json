@@ -1,0 +1,31 @@
+{
+  "name": "RoboMaster Research Team",
+  "tagline": "One hub for competition facts, task tracking and team sync",
+  "description": "Internal mission-control for the RoboMaster competition team: every task, group-chat decision and meeting outcome in one place, backed by the Feishu OpenAPI.",
+  "demo_user": {
+    "open_id": "ou_demo_user",
+    "name": "Demo Driver",
+    "email": "demo@example.com"
+  },
+  "facts": {
+    "Season": "2026",
+    "Competition": "RoboMaster University Championship",
+    "Division": "Research / Algorithm",
+    "Region": "CN",
+    "Members": "12"
+  },
+  "members": [
+    {"name": "Demo Driver", "role": "Team Lead"},
+    {"name": "Vision Engineer", "role": "Perception"},
+    {"name": "Control Engineer", "role": "Motion Control"},
+    {"name": "Embedded Engineer", "role": "Firmware"},
+    {"name": "Mechanical Engineer", "role": "Chassis"},
+    {"name": "Ops Manager", "role": "Logistics"}
+  ],
+  "milestones": [
+    {"date": "2026-03-01", "title": "Team formation", "note": "Research division kick-off"},
+    {"date": "2026-05-15", "title": "First prototype review", "note": "Chassis + vision demo"},
+    {"date": "2026-07-20", "title": "Regional qualifier", "note": "Qualified for national round"},
+    {"date": "2026-10-08", "title": "National finals", "note": "Current target — see tasks"}
+  ]
+}

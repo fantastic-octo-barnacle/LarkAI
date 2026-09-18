@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Timeline{% endblock %}
+{% block content %}
+<h1>Timeline</h1>
+<form class="filter-bar" method="get" action="{{ url_for('main.timeline') }}">
+  <label class="chk-row"><b>Show</b>
+    {% for s in all_sources %}<label class="chk"><input type="checkbox" name="show" value="{{ s }}" {% if s in show %}checked{% endif %}> {{ s }}</label>{% endfor %}
+  </label>
+  <select name="group">
+    <option value="day" {% if group == 'day' %}selected{% endif %}>Time axis (by day)</option>
+    <option value="source" {% if group == 'source' %}selected{% endif %}>By source</option>
+    <option value="none" {% if group == 'none' %}selected{% endif %}>Flat list</option>
+  </select>
+  <input type="search" name="q" placeholder="Search…" value="{{ q }}">
+  <button class="btn" type="submit">Filter</button>
+</form>
+<p class="muted small">Group messages are hidden by default — tick <b>message</b> to include them.</p>
+
+{% if group == 'day' and groups %}
+  <div class="tl-axis">
+    {% for g in groups %}
+      <section class="tl-day">
+        <div class="tl-date">{{ g.day }}</div>
+        <ol class="tl-items">
+          {% for e in g['items'] %}{% include "_timeline_item.html" %}{% endfor %}
+        </ol>
+      </section>
+    {% endfor %}
+  </div>
+{% elif group == 'source' and groups %}
+  {% for g in groups %}
+    <details class="tl-group {% if g.source == 'message' %}tl-collapsed{% endif %}" {% if g.source != 'message' %}open{% endif %}>
+      <summary>{{ g.source }} · {{ g['items']|length }} events</summary>
+      <ul class="timeline">
+        {% for e in g['items'] %}{% include "_timeline_item.html" %}{% endfor %}
+      </ul>
+    </details>
+  {% endfor %}
+{% else %}
+  <ul class="timeline">
+    {% for e in events %}{% include "_timeline_item.html" %}{% else %}
+      <li class="muted">No timeline items match — adjust filters or run <b>Sync</b>.</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+{% endblock %}

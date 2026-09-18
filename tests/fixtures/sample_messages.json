@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "om_mock_001",
+    "chat_id": "oc_mock_group",
+    "chat_name": "RM Research Sync",
+    "ts": "2026-09-14T09:05:00+00:00",
+    "author": "Demo Driver",
+    "text": "重要: 今天下午 4 点开例会，评审 aiming 管线，请大家带上最新测试数据。",
+    "url": "https://open.feishu.cn/messenger/om_mock_001",
+    "importance": 3
+  },
+  {
+    "message_id": "om_mock_002",
+    "chat_id": "oc_mock_group",
+    "chat_name": "RM Research Sync",
+    "ts": "2026-09-14T11:20:00+00:00",
+    "author": "Vision Engineer",
+    "text": "Aiming 管线今日测试通过 92% 命中率，EKF 延迟 18ms，风险点：场地灯光变化。",
+    "url": "https://open.feishu.cn/messenger/om_mock_002",
+    "importance": 2
+  },
+  {
+    "message_id": "om_mock_003",
+    "chat_id": "oc_mock_group",
+    "chat_name": "RM Research Sync",
+    "ts": "2026-09-15T02:10:00+00:00",
+    "author": "Embedded Engineer",
+    "text": "Deadline: 明天 18:00 前必须提交 referee 通信修复 patch，否则影响联调窗口。",
+    "url": "https://open.feishu.cn/messenger/om_mock_003",
+    "importance": 3
+  },
+  {
+    "message_id": "om_mock_004",
+    "chat_id": "oc_mock_group",
+    "chat_name": "RM Research Sync",
+    "ts": "2026-09-15T06:40:00+00:00",
+    "author": "Ops Manager",
+    "text": "已确认 finals 参赛名单 12 人，酒店预算已提交审批。",
+    "url": "https://open.feishu.cn/messenger/om_mock_004",
+    "importance": 1
+  },
+  {
+    "message_id": "om_mock_005",
+    "chat_id": "oc_mock_group",
+    "chat_name": "RM Research Sync",
+    "ts": "2026-09-15T08:30:00+00:00",
+    "author": "Demo Driver",
+    "text": "会议记录已上传：national finals 赛场动线 + 充电策略，明日全员确认。",
+    "url": "https://open.feishu.cn/messenger/om_mock_005",
+    "importance": 2
+  }
+]

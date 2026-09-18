@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>{{ team.get('name', settings.tenant_name) }}</h1>
+  <p class="tagline">{{ team.get('tagline', '') }}</p>
+  <p>{{ team.get('description', '') }}</p>
+  <div class="chips">
+    {% for key, value in team.get('facts', {}).items() %}<span class="chip"><b>{{ key }}:</b> {{ value }}</span>{% endfor %}
+  </div>
+</section>
+
+<section class="stat-grid">
+  <div class="card stat"><span class="num">{{ digest.stats.pending }}</span><span class="lbl">Pending</span></div>
+  <div class="card stat"><span class="num">{{ digest.stats.in_progress }}</span><span class="lbl">In progress</span></div>
+  <div class="card stat"><span class="num">{{ digest.stats.completed }}</span><span class="lbl">Completed</span></div>
+  <div class="card stat"><span class="num">{{ digest.stats.overdue }}</span><span class="lbl">Overdue</span></div>
+  <div class="card stat"><span class="num">{{ digest.stats.total }}</span><span class="lbl">Total tasks</span></div>
+</section>
+
+<div class="cols">
+  <section class="card">
+    <h2>Next deadlines</h2>
+    {% if digest.stats.next_deadlines %}
+      <ul class="plain">
+        {% for t in digest.stats.next_deadlines %}
+          <li><span class="badge prio-{{ (t.priority or 'NORMAL')|lower }}">{{ t.priority }}</span>
+              <b>{{ t.title }}</b> · due {{ t.due|dt }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="muted">No upcoming deadlines — create a task!</p>{% endif %}
+    <p><a href="{{ url_for('main.tasks_page') }}">Open task board →</a></p>
+  </section>
+
+  <section class="card">
+    <h2>Latest important updates</h2>
+    {% if digest.latest_important %}
+      <ul class="plain">
+        {% for e in digest.latest_important[:6] %}
+          <li><span class="badge src-{{ e.source }}">{{ e.source }}</span>
+              {% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
+              {% if e.ts %}<span class="muted">{{ e.ts|dt }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="muted">Run Sync to pull the latest timeline.</p>{% endif %}
+  </section>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>Upcoming events</h2>
+    {% if digest.upcoming %}
+      <ul class="plain">
+        {% for e in digest.upcoming %}
+          <li><span class="badge src-{{ e.source }}">{{ e.source }}</span> {{ e.title }} <span class="muted">{{ e.ts|dt }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="muted">Nothing scheduled.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Team members</h2>
+    <div class="member-grid">
+      {% for m in team.get('members', []) %}
+        <div class="member"><b>{{ m.get('name', '') }}</b><span class="muted">{{ m.get('role', '') }}</span></div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Milestones</h2>
+  {% if team.get('milestones') %}
+  <ol class="plain">
+    {% for m in team.get('milestones', []) %}
+      <li><b>{{ m.get('title', '') }}</b> · {{ m.get('date', '') }} <span class="muted">{{ m.get('note', '') }}</span></li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="muted">No milestones recorded yet (derived from live data only).</p>{% endif %}
+</section>
+{% endblock %}
