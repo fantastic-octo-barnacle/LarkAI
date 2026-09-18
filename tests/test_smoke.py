@@ -10,7 +10,7 @@ from pathlib import Path
 
 from rmtask.config import Settings
 from rmtask.notify import Emailer, notify_important_digest, notify_task_change
-from rmtask.storage.models import TaskRecord
+from rmtask.storage.models import TaskRecord, UserRecord
 from rmtask.storage.db import DB
 from rmtask.collector.pipeline import collect_all
 from rmtask.collector.summarizer import group_by_day, group_by_source, timeline_rows
@@ -220,6 +220,21 @@ class EmailerTest(unittest.TestCase):
         msg = inst.send_message.call_args.args[0]
         self.assertEqual(msg["Subject"], "Subject")
         self.assertEqual(msg["To"], "a@x.com")
+
+    def test_send_includes_owner_email(self) -> None:
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        settings = self._settings()
+        db = DB(str(Path(tmp) / "test.db"))
+        db.init()
+        db.upsert_user(UserRecord(open_id="ou_owner", name="Owner", email="owner@team.com"))
+        task = TaskRecord(guid="g2", title="Turret", status="pending", owner_open_id="ou_owner")
+        with mock.patch("rmtask.notify.emailer.smtplib.SMTP") as smtp:
+            notify_task_change(db, Emailer(settings), settings, kind="created", task=task)
+        msg = smtp.return_value.send_message.call_args.args[0]
+        self.assertIn("owner@team.com", msg["To"])
+        row = db.list_notifications()[0]
+        self.assertIn("owner@team.com", row["recipients"])
 
     def test_failure_is_recorded_not_raised(self) -> None:
         from unittest import mock

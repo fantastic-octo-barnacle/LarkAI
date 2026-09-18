@@ -64,6 +64,11 @@ docs/                  setup, collection, interactive, email, deployment docs
 - [docs/EMAIL_NOTIFICATIONS.md](docs/EMAIL_NOTIFICATIONS.md) — email setup and events
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — GitHub repo + custom domain / hosting process
 
+## Repository
+
+- GitHub: <https://github.com/fantastic-octo-barnacle/LarkAI> (branch `main`, SSH remote)
+- Static mirror: `https://fantastic-octo-barnacle.github.io/LarkAI/` once GitHub Pages is enabled
+
 ## Tests
 
 ```bash

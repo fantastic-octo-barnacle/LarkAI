@@ -5,6 +5,8 @@ This document covers turning the repo into a public/private GitHub project and s
 - **Option A - interactive backend** (recommended): the full Flask app on a small VPS / PaaS, custom domain, HTTPS. Supports login, task submit/cancel and email.
 - **Option B - static snapshot**: GitHub Pages serving a read-only export (dashboard/timeline), useful as a mirror; note that OAuth callbacks, task mutations and email need the backend (Option A).
 
+This repo is already published at **https://github.com/fantastic-octo-barnacle/LarkAI** (branch `main`, SSH remote `git@github.com:fantastic-octo-barnacle/LarkAI.git`). The static mirror URL will be `https://fantastic-octo-barnacle.github.io/LarkAI/` once Pages is enabled.
+
 ## 1. GitHub repository
 
 1. Create a repository, e.g. `rm-task-hub` (private is fine), at `https://github.com/<org>/rm-task-hub`.
@@ -37,8 +39,8 @@ Mount a volume at `/app/data` so `rmtask.db` and mock state survive restarts. Se
 
 ### CI and static Pages
 
-- `.github/workflows/ci.yml`: on every push/PR - installs deps, runs the 14 tests, and smoke-tests the static export.
-- `.github/workflows/pages.yml`: deploys the `site/` snapshot to GitHub Pages.
+- `.github/workflows/ci.yml`: on every push/PR - installs deps, runs the full test suite, and smoke-tests the static export.
+- `.github/workflows/pages.yml`: on push to `main` it exports the mock-mode snapshot to `site/` and deploys it to GitHub Pages (Settings → Pages → Source: GitHub Actions).
 
 
 ### A2. PaaS (Render / Railway / Fly.io)

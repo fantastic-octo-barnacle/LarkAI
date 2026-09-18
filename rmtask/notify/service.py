@@ -23,7 +23,7 @@ def _deliver(db: DB, emailer: Emailer, settings: Settings, *, kind: str,
     error = ""
     try:
         if settings.notify_on_task_change and recipients:
-            status = emailer.send(subject, body, text)
+            status = emailer.send(subject, body, text, recipients=recipients)
     except Exception as exc:  # noqa: BLE001 - audit trail must survive email failures
         status = "failed"
         error = str(exc)[:500]
@@ -84,5 +84,8 @@ def notify_task_change(
         f"<p><b>Actor:</b> {html_escape.escape(actor or 'system')}</p>"
     )
     recipients = _recipients(db, settings)
+    owner = db.get_user(task.owner_open_id) if task.owner_open_id else None
+    if owner and owner.email and owner.email not in recipients.split():
+        recipients = (recipients + " " + owner.email).strip()
     _deliver(db, emailer, settings, kind=f"task_{kind}", subject=subject,
              text=text, body=body, recipients=recipients)

@@ -16,13 +16,14 @@ class Emailer:
     def configured(self) -> bool:
         return self.settings.email_configured
 
-    def send(self, subject: str, html: str, text: str = "") -> str:
+    def send(self, subject: str, html: str, text: str = "", recipients: str = "") -> str:
         if not self.configured:
             return "dry_run"
         msg = EmailMessage()
         msg["Subject"] = subject
         msg["From"] = self.settings.email_from
-        msg["To"] = ", ".join(self.settings.email_to)
+        to = [r.strip() for r in (recipients or " ".join(self.settings.email_to)).split() if r.strip()]
+        msg["To"] = ", ".join(to)
         msg.set_content(text or html)
         msg.add_alternative(html, subtype="html")
         if self.settings.smtp_ssl:
