@@ -29,7 +29,6 @@ jobs:
           FEISHU_MODE: mock
         run: |
           mkdir -p data
-          cp tests/fixtures/*.json data/
           python -m scripts.export_static --out site
       - uses: actions/upload-pages-artifact@v3
         with:

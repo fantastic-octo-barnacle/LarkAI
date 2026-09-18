@@ -113,6 +113,12 @@ label.chk-row { display: inline-flex; flex-direction: row; align-items: center; 
 .task-meta { display: flex; gap: 12px; flex-wrap: wrap; }
 .task-card .actions { margin-top: auto; }
 
+/* -- workload: per-individual workload -- */
+.wl-row > summary { cursor: pointer; font-weight: 500; }
+.wl-row > summary .badge { margin-left: 6px; }
+.wl-tasks { margin: 8px 0 4px; padding-left: 20px; list-style: square; }
+.wl-tasks li { padding: 3px 0; }
+
 /* -- misc badges -- */
 .badge.st-in_progress { border-color: var(--accent); color: var(--accent2); }
 .badge.src-bitable { border-color: var(--warn); color: var(--warn); }

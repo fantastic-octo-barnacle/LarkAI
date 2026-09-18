@@ -78,6 +78,7 @@ def create_task(
     summary: str,
     description: str = "",
     due_iso: str = "",
+    assignee_open_ids: list[str] | None = None,
     assignee_open_id: str = "",
     token: str | None = None,
 ) -> dict[str, Any]:
@@ -90,8 +91,11 @@ def create_task(
     due = _iso_to_ts(due_iso)
     if due:
         body["due"] = due
-    if assignee_open_id:
-        body["members"] = [{"id": assignee_open_id, "type": "user", "role": "assignee"}]
+    ids = [oid for oid in (assignee_open_ids or []) if oid]
+    if assignee_open_id and assignee_open_id not in ids:
+        ids.append(assignee_open_id)
+    if ids:
+        body["members"] = [{"id": oid, "type": "user", "role": "assignee"} for oid in ids]
     data = client.post(TASK_PATH, json=body, token=token)
     return normalize_task(data.get("task", data))
 

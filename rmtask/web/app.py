@@ -53,6 +53,7 @@ def create_app(settings: Settings | None = None) -> Flask:
     app.config["SETTINGS"] = cfg
     app.secret_key = cfg.secret_key or "dev-secret-change-me"
     app.config["JSON_AS_ASCII"] = False
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
 
     from rmtask.web.access import configure_access
 

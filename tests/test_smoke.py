@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-import shutil
 import unittest
 import json
 import socket
@@ -15,7 +14,13 @@ from rmtask.notify import Emailer, notify_important_digest, notify_task_change
 from rmtask.storage.models import TaskRecord, UserRecord
 from rmtask.storage.db import DB
 from rmtask.collector.pipeline import CollectResult, collect_all
-from rmtask.collector.summarizer import group_by_day, group_by_source, timeline_rows
+from rmtask.collector.summarizer import (
+    compute_workload,
+    group_by_day,
+    group_by_source,
+    member_names,
+    timeline_rows,
+)
 from rmtask.collector.team import derive_team_info
 from rmtask.providers import BaseProvider
 from rmtask.storage.models import EventRecord
@@ -23,10 +28,94 @@ from rmtask.notify.service import maybe_send_digest
 from rmtask.web.app import create_app
 
 
+_MOCK_STATE = {
+    "tasks": [
+        {
+            "guid": "mock_task_001",
+            "title": "Calibrate aiming pipeline",
+            "description": "Calibrate gimbal compensation and tune the latency budget.",
+            "due": "2026-09-20T16:00:00+00:00",
+            "priority": "URGENT",
+            "status": "pending",
+            "owner_open_id": "ou_vision",
+            "owner_name": "Vision",
+            "creator": "ou_demo_user",
+            "created_at": "2026-09-10T02:00:00+00:00",
+            "updated_at": "2026-09-15T08:30:00+00:00",
+        },
+        {
+            "guid": "mock_task_002",
+            "title": "Collect telemetry",
+            "description": "Collect telemetry over the new test strip and upload logs.",
+            "due": "2026-09-24T10:00:00+00:00",
+            "priority": "HIGH",
+            "status": "pending",
+            "owner_open_id": "ou_mech",
+            "owner_name": "Mechanical",
+            "creator": "ou_demo_user",
+            "created_at": "2026-09-12T06:00:00+00:00",
+            "updated_at": "2026-09-15T08:30:00+00:00",
+        },
+        {
+            "guid": "mock_task_003",
+            "title": "Clean dataset",
+            "description": "Remove mislabeled samples and regenerate the split.",
+            "due": "2026-09-12T10:00:00+00:00",
+            "priority": "NORMAL",
+            "status": "completed",
+            "owner_open_id": "ou_vision",
+            "owner_name": "Vision",
+            "creator": "ou_demo_user",
+            "created_at": "2026-09-01T08:00:00+00:00",
+            "updated_at": "2026-09-11T19:00:00+00:00",
+        },
+    ],
+    "messages": [
+        {
+            "message_id": "om_mock_001",
+            "chat_id": "oc_mock_group",
+            "chat_name": "RM Research Sync",
+            "ts": "2026-09-14T09:05:00+00:00",
+            "author": "Demo Driver",
+            "text": "Important: sync at 4pm today, bring latest test data.",
+            "url": "",
+            "importance": 3,
+        },
+        {
+            "message_id": "om_mock_002",
+            "chat_id": "oc_mock_group",
+            "chat_name": "RM Research Sync",
+            "ts": "2026-09-15T08:30:00+00:00",
+            "author": "Ops Manager",
+            "text": "Confirmed attendance list of 12.",
+            "url": "",
+            "importance": 1,
+        },
+    ],
+    "meetings": [
+        {
+            "event_id": "ev_mock_001",
+            "title": "Weekly sync review",
+            "description": "Agenda: latency budget and lighting robustness.",
+            "start_iso": "2026-09-14T08:00:00+00:00",
+            "end_iso": "2026-09-14T09:00:00+00:00",
+            "author": "Demo Driver",
+            "url": "",
+            "meeting_type": "weekly_sync",
+            "importance": 2,
+        },
+    ],
+}
+
+
+def _seed_mock_state(tmpdir: str) -> None:
+    (Path(tmpdir) / "mock_state.json").write_text(
+        json.dumps(_MOCK_STATE, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
 def make_app(tmpdir: str) -> tuple:
-    fixtures = Path(__file__).parent / "fixtures"
-    for name in ("team_info.json", "sample_tasks.json", "sample_messages.json", "sample_meetings.json"):
-        shutil.copy(fixtures / name, Path(tmpdir) / name)
+    _seed_mock_state(tmpdir)
     settings = Settings(
         mode="mock",
         db_path=str(Path(tmpdir) / "test.db"),
@@ -59,9 +148,9 @@ class SmokeTest(unittest.TestCase):
         resp = self.client.post("/sync", follow_redirects=True)
         self.assertEqual(resp.status_code, 200)
         tasks = self.db.list_tasks()
-        self.assertGreaterEqual(len(tasks), 7)
+        self.assertGreaterEqual(len(tasks), 3)
         events = self.db.list_events()
-        self.assertGreaterEqual(len(events), 15)
+        self.assertGreaterEqual(len(events), 6)
 
     def test_create_cancel_complete(self) -> None:
         self.login()
@@ -87,12 +176,47 @@ class SmokeTest(unittest.TestCase):
         task = self.db.get_task(task.guid)
         self.assertEqual(task.status, "completed")
 
+    def test_create_task_multi_assignee(self) -> None:
+        self.login()
+        resp = self.client.post(
+            "/tasks/new",
+            data={"title": "Shared task", "priority": "HIGH",
+                  "owner_open_id": ["ou_demo_user", "ou_vision"]},
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        task = next(t for t in self.db.list_tasks() if t.title == "Shared task")
+        self.assertEqual(task.owner_open_id, "ou_demo_user")
+        state = json.loads((Path(self.tmp) / "mock_state.json").read_text())
+        item = next(t for t in state["tasks"] if t["title"] == "Shared task")
+        self.assertEqual(item["owner_open_ids"], ["ou_demo_user", "ou_vision"])
+
     def test_json_apis(self) -> None:
         self.login()
-        for path in ("/api/stats.json", "/api/timeline.json", "/api/team.json"):
+        for path in ("/api/stats.json", "/api/timeline.json", "/api/team.json", "/api/workload.json"):
             resp = self.client.get(path)
             self.assertEqual(resp.status_code, 200)
             self.assertIn("application/json", resp.content_type)
+
+    def test_workload_page(self) -> None:
+        self.login()
+        self.client.post("/sync")
+        resp = self.client.get("/workload")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Workload", resp.data)
+        self.assertIn(b"Vision", resp.data)
+        self.assertIn(b"Calibrate aiming pipeline", resp.data)
+
+    def test_api_workload(self) -> None:
+        self.login()
+        self.client.post("/sync")
+        resp = self.client.get("/api/workload.json")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertGreaterEqual(data["stats"]["members"], 2)
+        vision = next(m for m in data["members"] if m["name"] == "Vision")
+        self.assertEqual(vision["active"], 1)
+        self.assertEqual(vision["completed"], 1)
 
     def test_important_digest(self) -> None:
         notify_important_digest(
@@ -385,6 +509,40 @@ class TeamDeriveTest(unittest.TestCase):
         self.assertIn("硬件", team["facts"]["Divisions"])
         names = {m["name"] for m in team["members"]}
         self.assertEqual(names, {"杨奕磊", "李逸舟", "邵一清"})
+
+
+class WorkloadTest(unittest.TestCase):
+    def test_member_names(self) -> None:
+        self.assertEqual(member_names("用户802654 李屿霏 李逸舟"), ["李屿霏", "李逸舟"])
+        self.assertEqual(member_names("电控 邵一清 黄伟毅"), ["邵一清", "黄伟毅"])
+        self.assertEqual(member_names("用户12345"), [])
+        self.assertEqual(member_names(""), [])
+
+    def test_compute_workload(self) -> None:
+        tasks = [
+            TaskRecord(
+                guid="t1", title="Turret", status="pending", priority="URGENT",
+                owner_name="李逸舟", due="2000-01-01T00:00:00+00:00",
+                description="研发组别: 机械",
+            ),
+            TaskRecord(
+                guid="t2", title="Vision", status="completed", priority="NORMAL",
+                owner_name="李逸舟 夏彦哲", due="2026-09-20T00:00:00+00:00",
+            ),
+            TaskRecord(guid="t3", title="Unassigned", status="pending", owner_name=""),
+        ]
+        wl = compute_workload(tasks)
+        self.assertEqual(wl["stats"]["unassigned"], 1)
+        by_name = {m["name"]: m for m in wl["members"]}
+        li = by_name["李逸舟"]
+        self.assertEqual(li["total"], 2)
+        self.assertEqual(li["active"], 1)
+        self.assertEqual(li["completed"], 1)
+        self.assertEqual(li["overdue"], 1)
+        self.assertEqual(li["divisions"], ["机械"])
+        xia = by_name["夏彦哲"]
+        self.assertEqual(xia["total"], 1)
+        self.assertEqual(xia["completed"], 1)
 
 
 if __name__ == "__main__":

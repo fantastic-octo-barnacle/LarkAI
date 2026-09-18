@@ -8,7 +8,7 @@ The repo is a Python package (`rmtask`) split into small, independently testable
 rmtask/
   config.py        Environment settings (Settings dataclass) + .env loader
   errors.py        RmTaskError / FeishuAPIError / AuthError / ProviderError
-  providers.py     BaseProvider, LiveProvider (Feishu), MockProvider (sample data)
+  providers.py     BaseProvider, LiveProvider (Feishu), MockProvider (empty offline state)
   api/
     base.py        FeishuClient: HTTP + Bearer auth + paged list_all() + transient-failure retry
     auth.py        AuthManager: tenant token cache, OAuth v3 authorize/exchange/refresh, user_info
@@ -19,7 +19,7 @@ rmtask/
     bitable.py     bitable-v1: tables, record search, record create/update (website task writes)
   collector/
     pipeline.py    collect_all(): pull tasks/messages/meetings/bitable, mirror Bitable tasks, prune stale data, build digest
-    summarizer.py  timeline_rows(), compute_stats(), build_digest()
+    summarizer.py  timeline_rows(), compute_stats(), build_digest(), compute_workload(), member_names()
     team.py        derive_team_info(): real groups/members/divisions from collected data
   storage/
     db.py          SQLite helpers (users, oauth_tokens, tasks, events, notifications, settings)
@@ -29,7 +29,7 @@ rmtask/
     service.py     notify_task_change(): record + email + audit trail
   web/
     app.py         create_app(), template filter `dt`, per-request wiring
-    routes.py      dashboard / timeline / tasks / oauth / notifications / settings / JSON APIs
+    routes.py      dashboard / timeline / tasks / workload / oauth / notifications / settings / JSON APIs
     templates/     server-rendered pages
     static/        style.css, app.js
 tests/
@@ -76,11 +76,11 @@ class BaseProvider:
 
 - `LiveProvider`: user token from `oauth_tokens` (auto-refresh with `refresh_token`), tenant token as fallback app identity.
 - With `FEISHU_BITABLE_SUBMIT_TABLE_ID` set, `create_task()` POSTs to the Bitable submit table; with `FEISHU_BITABLE_TASKS_TABLE_ID` set, Cancel/Complete on `source=bitable` tasks PATCH their status column (wrappers in `api/bitable.py`). Without these, the same methods use task-v2.
-- `MockProvider`: offline demo; reads sample JSON from `RM_MOCK_DATA_DIR` (default `data/`; the repo ships fixtures in `tests/fixtures/` instead), persists mutations in `data/mock_state.json` (git-ignored).
+- `MockProvider`: offline demo; starts empty and persists tasks/messages/meetings in `data/mock_state.json` (git-ignored), so no sample data is bundled.
 
 ## Adding a new source
 
 1. Add a wrapper under `rmtask/api/` or extend an existing one.
 2. Add a `collect_*()` method to both providers returning `EventRecord`s.
 3. Call it in `collector/pipeline.py::collect_all()`.
-4. Add fixtures under `tests/fixtures/` and a test case in `tests/`.
+4. Extend `tests/test_smoke.py` (or add a test file) with in-test data for the new source.

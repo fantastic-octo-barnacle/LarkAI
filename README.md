@@ -12,7 +12,7 @@ make check                       # prints a configuration checklist
 make run                         # http://127.0.0.1:5000
 ```
 
-Set `FEISHU_MODE=mock` in `.env` to run fully offline with the bundled sample data (dashboard, timeline, task board all work; task actions stay local).
+Set `FEISHU_MODE=mock` in `.env` to run fully offline with an empty local state (dashboard, timeline, task board all work; task actions stay local in `data/mock_state.json`).
 
 ### Option B — real Feishu data (recommended)
 
@@ -55,6 +55,7 @@ python -m scripts.fetch_team_emails --limit 8      # cache member emails (needs 
 - **Dashboard** (`/`): team/competition facts and milestones, live stats (pending / in progress / completed / overdue), next deadlines, latest important updates, upcoming events.
 - **Timeline** (`/timeline`): every task deadline, group message and meeting merged into one time-ordered feed, importance-ranked, filterable by source and keyword.
 - **Task board** (`/tasks`): Feishu task-v2 tasks are interactive (create / complete / cancel / delete through the Feishu API); Bitable records are mirrored (status 待执行/执行中/已完成, priority, ddl and owners) and can be completed/cancelled once `base:record:update` is granted.
+- **Workload** (`/workload`): per-individual workload derived from the task board — active / pending / done / urgent / overdue counts, next deadline, division, and the member's task list.
 - **Notifications** (`/notifications`): audit trail of every task-change email (delivered / dry-run / failed).
 - **Settings** (`/settings`): notification recipients, SMTP status, run mode.
 - **JSON APIs**: `/api/stats.json`, `/api/timeline.json`, `/api/team.json`, `/api/members.json` for further integration.
@@ -79,7 +80,6 @@ rmtask/                main package (modular)
   web/                 Flask app (routes, templates, static)
   providers.py         LiveProvider / MockProvider abstraction
 data/                  runtime database (git-ignored)
-tests/fixtures/        sample JSON used only by mock-mode tests
 scripts/collect.py     CLI collector
 tests/                 smoke tests (run: python -m unittest discover -s tests)
 docs/                  setup, collection, interactive, email, deployment docs

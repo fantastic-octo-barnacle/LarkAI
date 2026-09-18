@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Workload{% endblock %}
+{% block content %}
+<h1>Workload</h1>
+<p class="muted small">Per-individual workload derived from the task board (Bitable mirror + Feishu tasks).</p>
+
+<div class="stat-grid">
+  <div class="stat"><span class="num">{{ workload.stats.members }}</span><span class="lbl">members with work</span></div>
+  <div class="stat"><span class="num">{{ workload.stats.active }}</span><span class="lbl">active tasks</span></div>
+  <div class="stat"><span class="num">{{ workload.stats.completed }}</span><span class="lbl">completed</span></div>
+  <div class="stat"><span class="num">{{ workload.stats.overdue }}</span><span class="lbl">overdue</span></div>
+  <div class="stat"><span class="num">{{ workload.stats.urgent }}</span><span class="lbl">urgent / high</span></div>
+</div>
+
+{% if workload.stats.unassigned %}
+<p class="muted small">⚠ {{ workload.stats.unassigned }} task{{ 's' if workload.stats.unassigned != 1 }} have no assignee and are not counted below.</p>
+{% endif %}
+
+{% if workload.members %}
+<div class="card">
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Member</th><th>Active</th><th>Pending</th><th>In progress</th><th>Done</th>
+        <th>Urgent</th><th>Overdue</th><th>Next due</th><th>Divisions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for m in workload.members %}
+      <tr>
+        <td>
+          <details class="wl-row">
+            <summary><b>{{ m.name }}</b> <span class="badge">{{ m.total }} task{{ 's' if m.total != 1 }}</span></summary>
+            <ul class="wl-tasks">
+              {% for t in m.tasks %}
+              <li>
+                <span class="badge st-{{ t.status }}">{{ t.status }}</span>
+                <span class="badge prio-{{ (t.priority or 'NORMAL')|lower }}">{{ t.priority or 'NORMAL' }}</span>
+                {% if t.url %}<a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.title }}</a>{% else %}<b>{{ t.title }}</b>{% endif %}
+                <span class="muted small">due {{ t.due|dt }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </details>
+        </td>
+        <td><b>{{ m.active }}</b></td>
+        <td>{{ m.pending }}</td>
+        <td>{{ m.in_progress }}</td>
+        <td>{{ m.completed }}</td>
+        <td>{{ m.urgent }}</td>
+        <td>{{ m.overdue }}</td>
+        <td>{{ m.next_due|dt }}</td>
+        <td>{{ m.divisions|join(', ') }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">No assigned tasks yet — run <b>Sync</b> to load the task board.</p>
+{% endif %}
+{% endblock %}

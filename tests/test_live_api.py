@@ -144,14 +144,18 @@ class TasksContractTest(unittest.TestCase):
         with self._patch_request([ok({"task": self.task})]) as req:
             item = task_api.create_task(
                 self.client, summary="Calibrate vision", description="desc",
-                due_iso="2023-02-04T06:06:04+00:00", assignee_open_id="ou_assignee",
+                due_iso="2023-02-04T06:06:04+00:00",
+                assignee_open_ids=["ou_assignee", "ou_second"],
             )
         self.assertEqual(item["guid"], "guid-1")
         args, kwargs = req.call_args
         self.assertTrue(args[1].endswith("/open-apis/task/v2/tasks"))
         body = kwargs["json"]
         self.assertEqual(body["summary"], "Calibrate vision")
-        self.assertEqual(body["members"], [{"id": "ou_assignee", "type": "user", "role": "assignee"}])
+        self.assertEqual(body["members"], [
+            {"id": "ou_assignee", "type": "user", "role": "assignee"},
+            {"id": "ou_second", "type": "user", "role": "assignee"},
+        ])
         from datetime import datetime
         expected_ms = str(int(datetime.fromisoformat("2023-02-04T06:06:04+00:00").timestamp() * 1000))
         self.assertEqual(body["due"], {"timestamp": expected_ms, "is_all_day": False})
@@ -350,7 +354,8 @@ class BitableContractTest(unittest.TestCase):
         settings = Settings()
         fields = _bitable_task_fields(
             {"title": "Build turret", "description": "desc", "due": "2026-10-01T10:00:00+00:00",
-             "priority": "HIGH", "owner_open_id": "ou_x", "category": "总车组",
+             "priority": "HIGH", "owner_open_id": "ou_x", "owner_open_ids": ["ou_y"],
+             "category": "总车组",
              "divisions": ["机械"], "remark": "note"},
             settings, "ou_me",
         )
@@ -360,7 +365,7 @@ class BitableContractTest(unittest.TestCase):
         self.assertEqual(fields["研发组别"], ["机械"])
         self.assertEqual(fields["备注"], "note")
         self.assertEqual(fields["优先级"], "高")
-        self.assertEqual(fields["负责人"], [{"id": "ou_x"}])
+        self.assertEqual(fields["负责人"], [{"id": "ou_x"}, {"id": "ou_y"}])
         self.assertEqual(fields["任务状态（由技术组长验收）"], "待执行")
         self.assertIn("ddl", fields)
         self.assertGreater(fields["ddl"], 10**12)
@@ -410,7 +415,8 @@ class ProviderRoutingTest(unittest.TestCase):
             task = provider.create_task(
                 {"title": "Fly", "priority": "URGENT", "due": "2026-09-20T10:00:00+00:00",
                  "description": "Detailed requirement", "category": "步兵（HKU）",
-                 "divisions": ["机械", "算法"], "remark": "note"},
+                 "divisions": ["机械", "算法"], "remark": "note",
+                 "owner_open_ids": ["ou_me", "ou_x"]},
                 open_id="ou_me",
             )
         self.assertEqual(task.source, "bitable")
@@ -424,7 +430,7 @@ class ProviderRoutingTest(unittest.TestCase):
         self.assertEqual(fields["研发组别"], ["机械", "算法"])
         self.assertEqual(fields["任务需求（兵种组长填写）（务必详细！）"], "Detailed requirement")
         self.assertEqual(fields["备注"], "note")
-        self.assertEqual(fields["负责人"], [{"id": "ou_me"}])
+        self.assertEqual(fields["负责人"], [{"id": "ou_me"}, {"id": "ou_x"}])
         self.assertIn("ddl", fields)
 
     def test_create_task_falls_back_to_task_v2(self) -> None:

@@ -8,6 +8,7 @@ venv/
 logs/
 data/mock_state.json
 data/rmtask.db
+data/team_info.json
 /site/
 .DS_Store
 

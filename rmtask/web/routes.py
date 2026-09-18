@@ -11,7 +11,15 @@ from flask import Blueprint, flash, g, jsonify, redirect, render_template, reque
 
 from rmtask.api import AuthManager
 from rmtask.collector.pipeline import collect_all
-from rmtask.collector.summarizer import build_digest, compute_stats, group_by_day, group_by_source, timeline_rows
+from rmtask.collector.summarizer import (
+    build_digest,
+    compute_stats,
+    compute_workload,
+    group_by_day,
+    group_by_source,
+    member_names,
+    timeline_rows,
+)
 from rmtask.errors import FeishuAPIError, ProviderError
 from rmtask.notify import Emailer, notify_task_change
 from rmtask.storage.models import TaskRecord, TokenRecord, UserRecord
@@ -19,7 +27,6 @@ from rmtask.storage.models import TaskRecord, TokenRecord, UserRecord
 bp = Blueprint("main", __name__)
 TIMELINE_SOURCES = ("task", "message", "meeting", "bitable")
 _DIVISION_RE = re.compile(r"研发组别:\s*([^|]+)")
-_DIVISION_WORDS = {"机械", "电控", "硬件", "算法", "管理"}
 
 
 def _task_division(description: str) -> str:
@@ -31,18 +38,12 @@ def _assignees() -> list[dict[str, str]]:
     """Known team members (name + open_id), from mirrored Bitable records."""
     seen: dict[str, str] = {}
     for task in g.db.list_tasks(limit=1000):
-        if not task.owner_open_id or not task.owner_name:
+        if not task.owner_open_id:
             continue
-        tokens = [t for t in re.split(r"\s+", task.owner_name.strip()) if t]
-        if not tokens:
-            continue
-        if re.fullmatch(r"用户\d+", tokens[0]):
+        names = member_names(task.owner_name)
+        if not names:
             continue  # placeholder user - cannot map confidently
-        if tokens[0] in _DIVISION_WORDS and len(tokens) > 1:
-            tokens = tokens[1:]
-        name = tokens[0]
-        if name and name not in _DIVISION_WORDS and not re.fullmatch(r"用户\d+", name):
-            seen.setdefault(task.owner_open_id, name)
+        seen.setdefault(task.owner_open_id, names[0])
     return [{"open_id": oid, "name": name} for oid, name in sorted(seen.items(), key=lambda kv: kv[1])]
 
 
@@ -159,6 +160,12 @@ def tasks_page():
     )
 
 
+@bp.get("/workload")
+def workload_page():
+    workload = compute_workload(g.db.list_tasks(limit=1000))
+    return render_template("workload.html", workload=workload)
+
+
 @bp.post("/tasks/new")
 def task_create():
     user = _current_user()
@@ -169,12 +176,16 @@ def task_create():
     if not title:
         flash("Task title is required.", "error")
         return redirect(url_for("main.tasks_page"))
+    owner_open_ids = [oid.strip() for oid in request.form.getlist("owner_open_id") if oid.strip()]
+    if not owner_open_ids and user:
+        owner_open_ids = [user.open_id]
     payload = {
         "title": title,
         "description": request.form.get("description", "").strip(),
         "due": request.form.get("due", "").strip(),
         "priority": request.form.get("priority", "NORMAL").upper(),
-        "owner_open_id": (request.form.get("owner_open_id") or (user.open_id if user else "")).strip(),
+        "owner_open_ids": owner_open_ids,
+        "owner_open_id": owner_open_ids[0] if owner_open_ids else "",
         "category": request.form.get("category", "").strip(),
         "divisions": [d for d in request.form.getlist("divisions") if d.strip()],
         "remark": request.form.get("remark", "").strip(),
@@ -371,3 +382,8 @@ def api_team():
 @bp.get("/api/members.json")
 def api_members():
     return jsonify(_assignees())
+
+
+@bp.get("/api/workload.json")
+def api_workload():
+    return jsonify(compute_workload(g.db.list_tasks(limit=1000)))

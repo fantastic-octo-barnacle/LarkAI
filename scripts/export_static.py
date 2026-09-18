@@ -26,6 +26,7 @@ PAGES = {
     "/": "index.html",
     "/timeline": "timeline.html",
     "/tasks": "tasks.html",
+    "/workload": "workload.html",
     "/notifications": "notifications.html",
     "/settings": "settings.html",
 }
@@ -34,6 +35,7 @@ API_PAGES = {
     "/api/stats.json": "api/stats.json",
     "/api/timeline.json": "api/timeline.json",
     "/api/team.json": "api/team.json",
+    "/api/workload.json": "api/workload.json",
 }
 
 

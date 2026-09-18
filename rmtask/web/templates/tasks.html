@@ -20,11 +20,12 @@
     </label>
     <label>Priority<select name="priority"><option>NORMAL</option><option>HIGH</option><option>URGENT</option></select></label>
     <label>Due<input type="datetime-local" name="due"></label>
-    <label>Assignee
-      <select name="owner_open_id">
-        <option value="">{% if current_user %}Me ({{ current_user.name }}){% else %}— (blank = Feishu default){% endif %}</option>
+    <label>Assignees (multi-select)
+      <select name="owner_open_id" multiple size="6">
+        {% if current_user %}<option value="{{ current_user.open_id }}">Me ({{ current_user.name }})</option>{% endif %}
         {% for a in assignees %}<option value="{{ a.open_id }}">{{ a.name }}</option>{% endfor %}
       </select>
+      <span class="muted small">Ctrl/Cmd-click to pick more than one; empty = assign to yourself.</span>
     </label>
     <label>研发组别（可多选）
       <select name="divisions" multiple size="4">

@@ -23,5 +23,4 @@ jobs:
           FEISHU_MODE: mock
         run: |
           mkdir -p data
-          cp tests/fixtures/*.json data/
           python -m scripts.export_static --out /tmp/site

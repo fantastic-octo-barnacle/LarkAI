@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from rmtask.storage.models import EventRecord, TaskRecord
+
+
+_DIVISION_RE = re.compile(r"研发组别:\s*([^|]+)")
+_DIVISION_WORDS = {"机械", "电控", "硬件", "算法", "管理"}
+_PLACEHOLDER_USER = re.compile(r"^用户\d+$")
+
+
+def member_names(owner_name: str) -> list[str]:
+    """Split a Bitable owner field into member names (drop placeholders and
+    a leading division prefix like ``电控``)."""
+    if not owner_name:
+        return []
+    tokens = [t for t in re.split(r"\s+", owner_name.strip()) if t]
+    if tokens and tokens[0] in _DIVISION_WORDS:
+        tokens = tokens[1:]
+    return [t for t in tokens if not _PLACEHOLDER_USER.match(t)]
 
 
 def _parse(ts: str) -> datetime:
@@ -77,6 +94,74 @@ def compute_stats(tasks: list[TaskRecord]) -> dict[str, Any]:
         "cancelled": sum(1 for t in tasks if t.status == "cancelled"),
         "overdue": len(overdue),
         "next_deadlines": [t.to_dict() for t in next_due],
+    }
+
+
+def compute_workload(tasks: list[TaskRecord]) -> dict[str, Any]:
+    """Per-individual workload derived from the task board (live Bitable mirror)."""
+    now = datetime.now(timezone.utc)
+    members: dict[str, dict[str, Any]] = {}
+    for t in tasks:
+        names = member_names(t.owner_name)
+        if not names:
+            continue
+        active = t.status in ("pending", "in_progress")
+        overdue = active and bool(t.due) and _parse(t.due) < now
+        urgent = t.priority in ("URGENT", "HIGH")
+        due_dt = _parse(t.due) if t.due else None
+        division = ""
+        match = _DIVISION_RE.search(t.description or "")
+        if match:
+            division = match.group(1).strip()
+        for name in names:
+            m = members.setdefault(name, {
+                "name": name, "total": 0, "active": 0, "pending": 0,
+                "in_progress": 0, "completed": 0, "cancelled": 0,
+                "urgent": 0, "overdue": 0, "divisions": set(),
+                "next_due": "", "tasks": [],
+            })
+            m["total"] += 1
+            if active:
+                m["active"] += 1
+            if t.status == "pending":
+                m["pending"] += 1
+            elif t.status == "in_progress":
+                m["in_progress"] += 1
+            elif t.status == "completed":
+                m["completed"] += 1
+            elif t.status == "cancelled":
+                m["cancelled"] += 1
+            if urgent:
+                m["urgent"] += 1
+            if overdue:
+                m["overdue"] += 1
+            if division:
+                m["divisions"].add(division)
+            if active and due_dt and (not m["next_due"] or due_dt < _parse(m["next_due"])):
+                m["next_due"] = t.due
+            m["tasks"].append({
+                "guid": t.guid, "title": t.title, "status": t.status,
+                "priority": t.priority, "due": t.due, "url": t.url,
+            })
+    rows = []
+    for m in members.values():
+        m["divisions"] = sorted(m["divisions"])
+        m["tasks"].sort(key=lambda x: (
+            x["status"] not in ("pending", "in_progress"),
+            _parse(x["due"]) if x["due"] else _parse(""),
+        ))
+        rows.append(m)
+    rows.sort(key=lambda m: (-m["active"], -m["total"], m["name"]))
+    return {
+        "members": rows,
+        "stats": {
+            "members": len(rows),
+            "active": sum(m["active"] for m in rows),
+            "completed": sum(m["completed"] for m in rows),
+            "overdue": sum(m["overdue"] for m in rows),
+            "urgent": sum(m["urgent"] for m in rows),
+            "unassigned": sum(1 for t in tasks if not member_names(t.owner_name)),
+        },
     }
 
 

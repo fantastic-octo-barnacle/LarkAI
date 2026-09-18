@@ -1,4 +1,4 @@
-"""Provider abstraction: `LiveProvider` (Feishu API) and `MockProvider` (sample data)."""
+"""Provider abstraction: `LiveProvider` (Feishu API) and `MockProvider` (empty offline state)."""
 
 from __future__ import annotations
 
@@ -121,6 +121,17 @@ DEFAULT_TASK_OPTIONS: dict[str, list[str]] = {
 _task_options_cache: dict[str, tuple[float, dict[str, list[str]]]] = {}
 
 
+def _assignee_ids(payload: dict[str, Any], fallback_open_id: str = "") -> list[str]:
+    """Normalize single/multi assignee fields into a de-duplicated open_id list."""
+    ids = [oid for oid in (payload.get("owner_open_ids") or []) if oid]
+    owner = payload.get("owner_open_id") or ""
+    if owner and owner not in ids:
+        ids.insert(0, owner)
+    if not ids and fallback_open_id:
+        ids = [fallback_open_id]
+    return ids
+
+
 def _bitable_task_fields(payload: dict[str, Any], settings: Settings, owner_open_id: str = "") -> dict[str, Any]:
     """Map a website task payload onto the Bitable column names (configurable)."""
     fields: dict[str, Any] = {}
@@ -147,9 +158,9 @@ def _bitable_task_fields(payload: dict[str, Any], settings: Settings, owner_open
     priority = (payload.get("priority") or "").strip().upper()
     if priority:
         fields[settings.bitable_priority_field] = _PRIORITY_TO_BITABLE.get(priority, priority)
-    owner = payload.get("owner_open_id") or owner_open_id or ""
-    if owner:
-        fields[settings.bitable_owner_field] = [{"id": owner}]
+    owner_ids = _assignee_ids(payload, owner_open_id)
+    if owner_ids:
+        fields[settings.bitable_owner_field] = [{"id": oid} for oid in owner_ids]
     if settings.bitable_status_field:
         fields[settings.bitable_status_field] = settings.bitable_default_status
     return fields
@@ -209,6 +220,7 @@ class LiveProvider(BaseProvider):
         return out
 
     def create_task(self, payload: dict[str, Any], open_id: str = "") -> TaskRecord:
+        owner_ids = _assignee_ids(payload, open_id)
         if self.settings.bitable_submit_table_id:
             token = self._token_or_none(open_id)
             fields = _bitable_task_fields(payload, self.settings, open_id)
@@ -227,8 +239,8 @@ class LiveProvider(BaseProvider):
                     lines.append(f"ddl: {payload['due']}")
                 if payload.get("priority"):
                     lines.append(f"priority: {payload['priority']}")
-                if payload.get("owner_open_id") or open_id:
-                    lines.append(f"assignee: {payload.get('owner_open_id') or open_id}")
+                if owner_ids:
+                    lines.append(f"assignee: {'、'.join(owner_ids)}")
                 fields = {"Text": "\n".join(lines)}
             try:
                 record = bitable_api.create_record(
@@ -243,7 +255,7 @@ class LiveProvider(BaseProvider):
                     due=ev["due_iso"] or payload.get("due", ""),
                     priority=(payload.get("priority") or "NORMAL").upper(),
                     status="pending",
-                    owner_open_id=payload.get("owner_open_id") or open_id,
+                    owner_open_id=owner_ids[0] if owner_ids else open_id,
                     owner_name="", creator="", url="",
                     created_at=now_iso(), updated_at=now_iso(), source="bitable",
                 )
@@ -264,7 +276,7 @@ class LiveProvider(BaseProvider):
             summary=payload.get("title", ""),
             description=desc,
             due_iso=payload.get("due", ""),
-            assignee_open_id=payload.get("owner_open_id", "") or open_id,
+            assignee_open_ids=owner_ids,
             token=self._token_or_none(open_id),
         )
         record = _record_from_feishu(item)
@@ -513,14 +525,13 @@ class LiveProvider(BaseProvider):
 
 
 class MockProvider(BaseProvider):
-    """Offline demo provider backed by `data/sample_*.json`; writes created/
-    cancelled tasks to `data/mock_state.json` so the demo is persistent."""
+    """Offline provider: never calls Feishu. State starts empty and persists
+    to `data/mock_state.json` (git-ignored); no sample data is bundled."""
 
     def __init__(self, settings: Settings, db: DB, data_dir: Path | None = None) -> None:
         self.settings = settings
         self.db = db
         self.data_dir = data_dir or Path(settings.mock_data_dir or ROOT / "data")
-        self.samples_dir = self.data_dir
         self.state_path = self.data_dir / "mock_state.json"
         self._load()
 
@@ -528,15 +539,20 @@ class MockProvider(BaseProvider):
         return _load_json(self.data_dir / "team_info.json", {})
 
     def _load(self) -> None:
-        if not self.state_path.exists():
-            state = {"tasks": _load_json(self.samples_dir / "sample_tasks.json", [])}
-            self.state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-        self.state = _load_json(self.state_path, {"tasks": []})
+        raw = _load_json(self.state_path, {})
+        if not isinstance(raw, dict):
+            raw = {}
+        self.state = {
+            "tasks": raw.get("tasks", []),
+            "messages": raw.get("messages", []),
+            "meetings": raw.get("meetings", []),
+        }
 
     def task_create_options(self, open_id: str = "") -> dict[str, list[str]]:
         return {k: list(v) for k, v in DEFAULT_TASK_OPTIONS.items()}
 
     def _save(self) -> None:
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
         self.state_path.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _user(self) -> UserRecord:
@@ -571,6 +587,7 @@ class MockProvider(BaseProvider):
 
     def create_task(self, payload: dict[str, Any], open_id: str = "") -> TaskRecord:
         user = self._user()
+        owner_ids = _assignee_ids(payload, user.open_id)
         item = {
             "guid": f"mock_{uuid.uuid4().hex[:12]}",
             "title": payload.get("title", ""),
@@ -578,7 +595,8 @@ class MockProvider(BaseProvider):
             "due": payload.get("due", ""),
             "priority": (payload.get("priority") or "NORMAL").upper(),
             "status": "pending",
-            "owner_open_id": payload.get("owner_open_id") or user.open_id,
+            "owner_open_id": owner_ids[0] if owner_ids else user.open_id,
+            "owner_open_ids": owner_ids,
             "owner_name": payload.get("owner_name") or user.name,
             "creator": user.open_id,
             "url": "",
@@ -615,9 +633,8 @@ class MockProvider(BaseProvider):
         raise ProviderError(f"task not found: {guid}")
 
     def collect_messages(self, open_id: str = "") -> list[EventRecord]:
-        msgs = _load_json(self.samples_dir / "sample_messages.json", [])
         out = []
-        for m in msgs:
+        for m in self.state["messages"]:
             out.append(EventRecord(
                 source="message",
                 source_id=m.get("message_id", uuid.uuid4().hex),
@@ -633,9 +650,8 @@ class MockProvider(BaseProvider):
         return out
 
     def collect_meetings(self, open_id: str = "") -> list[EventRecord]:
-        meetings = _load_json(self.samples_dir / "sample_meetings.json", [])
         out = []
-        for m in meetings:
+        for m in self.state["meetings"]:
             out.append(EventRecord(
                 source="meeting",
                 source_id=m.get("event_id", uuid.uuid4().hex),
@@ -652,9 +668,9 @@ class MockProvider(BaseProvider):
 
     def diagnostics(self, open_id: str = "") -> list[dict]:
         checks = super().diagnostics(open_id)
-        checks.append({"name": "seed tasks", "ok": True, "detail": f"{len(self.list_tasks())} tasks"})
-        checks.append({"name": "sample messages", "ok": True, "detail": f"{len(self.collect_messages())} messages"})
-        checks.append({"name": "sample meetings", "ok": True, "detail": f"{len(self.collect_meetings())} meetings"})
+        checks.append({"name": "mock tasks", "ok": True, "detail": f"{len(self.list_tasks())} tasks"})
+        checks.append({"name": "mock messages", "ok": True, "detail": f"{len(self.state['messages'])} messages"})
+        checks.append({"name": "mock meetings", "ok": True, "detail": f"{len(self.state['meetings'])} meetings"})
         return checks
 
 
