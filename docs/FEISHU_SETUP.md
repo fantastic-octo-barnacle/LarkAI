@@ -32,6 +32,7 @@ Open **开发配置 → 权限管理 → API 权限** and request (then publish)
 | Meetings / calendar | `calendar:calendar:readonly` | For collecting meeting events |
 | Bitable (your task database) | `base:table:read` + `base:record:retrieve` (read) plus `base:record:create` + `base:record:update` + `base:field:read` (website submit/cancel writes; `base:record:delete` for self-service deletion) | Reads use the logged-in user's token, so grant the `base:*` scopes; writes need `base:record:create` (POST / new tasks) and `base:record:update` (PATCH / complete-cancel) |
 | Wiki (resolve wiki-hosted Bitable) | `wiki:wiki:readonly` (or `wiki:wiki` / `wiki:node:read`) | Needed to resolve a `feishu.cn/wiki/<token>` URL to the base's `app_token` |
+| Member directory (assignee picker) | `contact:contact:readonly_as_app` / `contact:contact:access_as_app` (+ `contact:user.email:readonly` for emails) + `im:chat:readonly` for group members | `python -m scripts.fetch_members` or the admin **⟳ Members** button; externals are picked up from group member lists |
 | Drive / Docs (optional) | `drive:drive:readonly` | If you extend collection to files/docs |
 
 > Note: if the authorize URL contains a scope the app has not been granted, the user sees error `20027`. If an API is called without the right scope, Feishu returns `99991679` with a `permission_violations` list.
@@ -98,6 +99,12 @@ Without the email scope the API returns `email: ""` (user token omits the field 
 Fetch + cache samples into the local `users` table:
 
     python -m scripts.fetch_team_emails --limit 8
+
+Fetch the **whole** directory (org users + group members, including externals):
+
+    python -m scripts.fetch_members
+
+The assignee picker on the task form is fed from that cached `users` table.
 ```
 
 The wiki URL's last path segment (`WBJjwtT7TizbTekjBPMcMxT5nbe`) is a **wiki node token**, not the Bitable `app_token`; the repo resolves it automatically via `GET /open-apis/wiki/v2/spaces/get_node` and reads the base with the returned `obj_token`.

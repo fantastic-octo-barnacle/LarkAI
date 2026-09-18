@@ -25,6 +25,21 @@ def list_chats(client: FeishuClient, *, token: str | None = None) -> list[dict[s
     return client.list_all(CHATS_PATH, list_key="items", token=token, params={"user_id_type": "open_id"})
 
 
+def list_chat_members(
+    client: FeishuClient,
+    chat_id: str,
+    *,
+    page_size: int = 50,
+    token: str | None = None,
+) -> list[dict[str, Any]]:
+    """List group members (open_id + name); externals/guests are included."""
+    params: dict[str, Any] = {
+        "member_id_type": "open_id",
+        "page_size": page_size,
+    }
+    return client.list_all(f"{CHATS_PATH}/{chat_id}/members", list_key="items", token=token, params=params)
+
+
 def message_text(item: dict[str, Any]) -> str:
     body = item.get("body") or {}
     content = body.get("content") or ""

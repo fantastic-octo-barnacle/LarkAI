@@ -21,6 +21,7 @@ rmtask/
     pipeline.py    collect_all(): pull tasks/messages/meetings/bitable, mirror Bitable tasks, prune stale data, build digest
     summarizer.py  timeline_rows(), compute_stats(), build_digest(), compute_workload(), member_names()
     team.py        derive_team_info(): real groups/members/divisions from collected data
+    members.py     fetch_all_members(): directory + group-chat members (incl. externals) -> users table
   storage/
     db.py          SQLite helpers (users, oauth_tokens, tasks, events, notifications, settings)
     models.py      TaskRecord / EventRecord / UserRecord / TokenRecord

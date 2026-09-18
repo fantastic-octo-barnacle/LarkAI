@@ -53,6 +53,9 @@
   </select>
   <input type="search" name="q" placeholder="Search…" value="{{ q }}">
   <button class="btn" type="submit">Filter</button>
+  {% if is_admin %}
+  <form class="inline" method="post" action="{{ url_for('main.members_refresh') }}"><button class="btn" type="submit">⟳ Members</button></form>
+  {% endif %}
 </form>
 
 {% set ns = namespace(count=0) %}

@@ -262,6 +262,23 @@ class SmokeTest(unittest.TestCase):
         members = self.client.get("/api/members.json").get_json()
         self.assertTrue(any(m["open_id"] == "ou_vision" for m in members))
 
+    def test_member_picker_uses_cached_directory(self) -> None:
+        self.login()
+        self.db.upsert_user(UserRecord(open_id="ou_external", name="External Guest", email="ext@x.com"))
+        resp = self.client.get("/tasks")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'value="ou_external"', resp.data)
+        members = self.client.get("/api/members.json").get_json()
+        self.assertTrue(any(
+            m["open_id"] == "ou_external" and m["name"] == "External Guest" for m in members
+        ))
+
+    def test_members_refresh_requires_live_mode(self) -> None:
+        self.login()
+        resp = self.client.post("/members/refresh", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(b"requires live Feishu mode", self.client.get(resp.headers["Location"]).data)
+
 
 class GroupingTest(unittest.TestCase):
     def _rows(self) -> list:
@@ -509,6 +526,16 @@ class TeamDeriveTest(unittest.TestCase):
         self.assertIn("硬件", team["facts"]["Divisions"])
         names = {m["name"] for m in team["members"]}
         self.assertEqual(names, {"杨奕磊", "李逸舟", "邵一清"})
+
+
+class StorageTest(unittest.TestCase):
+    def test_upsert_user_preserves_known_email(self) -> None:
+        tmp = tempfile.mkdtemp()
+        db = DB(str(Path(tmp) / "t.db"))
+        db.init()
+        db.upsert_user(UserRecord(open_id="ou_x", name="X", email="x@team.com"))
+        db.upsert_user(UserRecord(open_id="ou_x", name="X", email=""))
+        self.assertEqual(db.get_user("ou_x").email, "x@team.com")
 
 
 class WorkloadTest(unittest.TestCase):

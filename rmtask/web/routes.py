@@ -11,6 +11,7 @@ from flask import Blueprint, flash, g, jsonify, redirect, render_template, reque
 
 from rmtask.api import AuthManager
 from rmtask.collector.pipeline import collect_all
+from rmtask.collector.members import fetch_all_members
 from rmtask.collector.summarizer import (
     build_digest,
     compute_stats,
@@ -35,8 +36,11 @@ def _task_division(description: str) -> str:
 
 
 def _assignees() -> list[dict[str, str]]:
-    """Known team members (name + open_id), from mirrored Bitable records."""
+    """Known team members: cached directory users first, mirrored task owners as fallback."""
     seen: dict[str, str] = {}
+    for member in g.db.list_users():
+        if member.open_id and member.name and member.name != member.open_id:
+            seen[member.open_id] = member.name
     for task in g.db.list_tasks(limit=1000):
         if not task.owner_open_id:
             continue
@@ -259,6 +263,26 @@ def sync():
     for warning in result.warnings:
         flash(warning, "error")
     return redirect(url_for("main.index"))
+
+
+@bp.post("/members/refresh")
+def members_refresh():
+    user = _current_user()
+    if not _is_admin(user):
+        flash("Only admins can refresh members.", "error")
+        return redirect(url_for("main.index"))
+    if g.settings.mode != "live":
+        flash("Member refresh requires live Feishu mode.", "error")
+        return redirect(url_for("main.tasks_page"))
+    try:
+        result = fetch_all_members(g.provider, g.db, open_id=user.open_id if user else "")
+    except (ProviderError, FeishuAPIError) as exc:
+        flash(f"Member refresh failed: {exc}", "error")
+        return redirect(url_for("main.tasks_page"))
+    flash(f"Members updated: {result['users']} total ({result['org']} org, {result['chat_members']} chat).", "success")
+    for warning in result["warnings"]:
+        flash(warning, "error")
+    return redirect(url_for("main.tasks_page"))
 
 
 @bp.get("/diagnostics")

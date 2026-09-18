@@ -389,6 +389,44 @@ class ContactContractTest(unittest.TestCase):
         self.assertTrue(req.call_args.args[1].endswith("/open-apis/contact/v3/users/ou_x"))
         self.assertEqual(req.call_args.kwargs["params"], {"user_id_type": "open_id"})
 
+    def test_list_org_users_walks_department_tree(self) -> None:
+        client = FeishuClient("https://open.feishu.cn")
+        dept_root = ok({"items": [{"open_department_id": "od-1", "name": "R&D"}],
+                        "has_more": False, "page_token": ""})
+        dept_leaf = ok({"items": [], "has_more": False, "page_token": ""})
+        users_ind = ok({"items": [{"open_id": "ou_ind", "name": "Ind"}],
+                        "has_more": False, "page_token": ""})
+        users_root = ok({"items": [{"open_id": "ou_root", "name": "Root"}],
+                         "has_more": False, "page_token": ""})
+        users_child = ok({"items": [{"open_id": "ou_child", "name": "Child"}],
+                          "has_more": False, "page_token": ""})
+        with __import__("unittest.mock").mock.patch(
+            "rmtask.api.base.requests.request",
+            side_effect=[fake_response(users_ind), fake_response(dept_root),
+                         fake_response(users_root), fake_response(dept_leaf),
+                         fake_response(users_child)],
+        ) as req:
+            users = contact_api.list_org_users(client, token="t")
+        self.assertEqual({u["open_id"] for u in users}, {"ou_ind", "ou_root", "ou_child"})
+        paths = [c.args[1] for c in req.call_args_list]
+        self.assertTrue(all(p.endswith("/open-apis/contact/v3/users") for p in paths[:1]))
+        self.assertEqual(paths[1], paths[3])  # two department listings
+        for p in paths:
+            self.assertIn("/open-apis/contact/v3/", p)
+        self.assertTrue(paths[2].endswith("/open-apis/contact/v3/users/find_by_department"))
+
+    def test_list_chat_members(self) -> None:
+        client = FeishuClient("https://open.feishu.cn")
+        payload = ok({"items": [{"member_id": "ou_m", "name": "M"}],
+                      "has_more": False, "page_token": ""})
+        with __import__("unittest.mock").mock.patch("rmtask.api.base.requests.request",
+                                                   return_value=fake_response(payload)) as req:
+            members = im_api.list_chat_members(client, "oc_1", token="t")
+        self.assertEqual(members[0]["member_id"], "ou_m")
+        self.assertTrue(req.call_args.args[1].endswith(
+            "/open-apis/im/v1/chats/oc_1/members"))
+        self.assertEqual(req.call_args.kwargs["params"]["member_id_type"], "open_id")
+
 
 class ProviderRoutingTest(unittest.TestCase):
     def _provider(self, **kw) -> LiveProvider:

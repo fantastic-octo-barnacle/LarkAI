@@ -118,7 +118,8 @@ class DB:
             conn.execute(
                 """INSERT INTO users(open_id, name, email, avatar_url, is_admin)
                    VALUES(?,?,?,?,?)
-                   ON CONFLICT(open_id) DO UPDATE SET name=excluded.name, email=excluded.email,
+                   ON CONFLICT(open_id) DO UPDATE SET name=excluded.name,
+                     email=CASE WHEN excluded.email != '' THEN excluded.email ELSE users.email END,
                      avatar_url=excluded.avatar_url, is_admin=excluded.is_admin""",
                 (user.open_id, user.name, user.email, user.avatar_url, int(user.is_admin)),
             )
