@@ -18,3 +18,10 @@ FEISHU_DOC.md
 *.md
 
 .venv*/
+
+target/
+frontend/node_modules/
+frontend/dist/
+data/
+frontend/test-results/
+frontend/playwright-report/

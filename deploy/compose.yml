@@ -10,9 +10,11 @@ services:
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Public origin is required}
       CF_ACCESS_ISSUER: ${CF_ACCESS_ISSUER:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
-      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?A random Flask secret is required}
       FEISHU_MODE: live
-      RM_DB_PATH: /app/data/rmtask.db
+      HOST: 0.0.0.0
+      PORT: 8000
+      FRONTEND_DIST: /app/frontend/dist
+      DATABASE_PATH: /app/data/larkai.sqlite3
       RM_AUTO_COLLECT_SECONDS: ${RM_AUTO_COLLECT_SECONDS:-300}
     volumes:
       - data:/app/data
@@ -21,7 +23,7 @@ services:
         aliases: [larkai]
     # Caddy is the only published entry point; no host port.
     healthcheck:
-      test: [CMD, python, -c, "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3))['ok']"]
+      test: [CMD, curl, --fail, --silent, http://127.0.0.1:8000/healthz]
       interval: 10s
       timeout: 5s
       retries: 6

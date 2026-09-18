@@ -3,11 +3,11 @@ from deploy.merge_env import merge
 
 
 class EnvironmentMergeTests(unittest.TestCase):
-    def test_partial_secret_preserves_origin_verification_and_flask_secret(self):
-        merged = merge('CF_ACCESS_AUD=aud\nFLASK_SECRET_KEY=stable\nFEISHU_APP_ID=old\n',
+    def test_partial_secret_preserves_origin_verification_and_database_path(self):
+        merged = merge('CF_ACCESS_AUD=aud\nDATABASE_PATH=/app/data/larkai.sqlite3\nFEISHU_APP_ID=old\n',
                        '# Updated connection\nFEISHU_APP_ID=cli_new\nFEISHU_APP_SECRET="secret=value"\n')
         self.assertIn('CF_ACCESS_AUD=aud\n', merged)
-        self.assertIn('FLASK_SECRET_KEY=stable\n', merged)
+        self.assertIn('DATABASE_PATH=/app/data/larkai.sqlite3\n', merged)
         self.assertIn('FEISHU_APP_SECRET="secret=value"\n', merged)
         self.assertNotIn('FEISHU_APP_ID=old', merged)
 

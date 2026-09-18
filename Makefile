@@ -1,30 +1,30 @@
-PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)
-
-.PHONY: setup check run test collect notify export
-
-install:
-	$(PYTHON) -m pip install -r requirements.txt
-
+.PHONY: setup run dev build test check collect
 setup:
-	python3 -m venv .venv
-	$(PYTHON) -m pip install -r requirements.txt
+	npm ci --prefix frontend
+	cargo fetch --locked
 	@test -f .env || cp .env.example .env
-	@echo "Ready. Edit .env, then: make check && make run"
+
+# Serve the production React build and JSON API on one origin.
+run: build
+	cargo run --locked -p larkai
+
+# Run in two terminals: make dev and cargo run -p larkai
+# Vite proxies API and authorization paths to localhost:8000.
+dev:
+	npm run dev --prefix frontend
+
+build:
+	npm run build --prefix frontend
 
 check:
-	$(PYTHON) -m scripts.check_setup
-
-run:
-	$(PYTHON) run.py
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets --locked -- -D warnings
+	npm run build --prefix frontend
 
 test:
-	$(PYTHON) -m unittest discover -s tests
+	cargo test --workspace --locked
+	npm test --prefix frontend
+	python3 -m unittest discover -s tests -v
 
 collect:
-	$(PYTHON) -m scripts.collect
-
-notify:
-	$(PYTHON) -m scripts.collect --notify
-
-export:
-	$(PYTHON) -m scripts.export_static --out site
+	cargo run --locked -p larkai -- collect

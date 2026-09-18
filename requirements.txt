@@ -1,7 +1,0 @@
-flask>=3.0
-requests>=2.31
-gunicorn>=21.0
-PyJWT[crypto]>=2.10,<3
-Authlib>=1.8,<2
-Flask-Session>=0.8,<1
-cachelib>=0.13,<1

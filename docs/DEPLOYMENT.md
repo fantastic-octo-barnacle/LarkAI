@@ -1,199 +1,46 @@
-# Deployment: GitHub + Custom Domain
+# Deployment
 
-This document covers turning the repo into a public/private GitHub project and serving the site under a custom domain. Two options:
+Build with `docker build -t larkai .`. The multi-stage image builds React with Node 24 and the Axum server with Rust 1.98. The runtime is Debian with CA certificates, curl for health checks and sqlite3 for consistent backups; it runs as UID/GID 10001.
 
-- **Option A - interactive backend** (recommended): the full Flask app on a small VPS / PaaS, custom domain, HTTPS. Supports login, task submit/cancel and email.
-- **Option B - static snapshot**: GitHub Pages serving a read-only export (dashboard/timeline), useful as a mirror; note that OAuth callbacks, task mutations and email need the backend (Option A).
+## Configuration
 
-This repo is already published at **https://github.com/fantastic-octo-barnacle/LarkAI** (branch `main`, SSH remote `git@github.com:fantastic-octo-barnacle/LarkAI.git`). The static mirror URL will be `https://fantastic-octo-barnacle.github.io/LarkAI/` once Pages is enabled.
-
-## 0. Launch the website
-
-1. **Setup once**
-   ```bash
-   make setup        # python venv + deps + .env from .env.example (only if missing)
-   make check        # prints a config checklist; every line should say OK
-   ```
-2. **Local dev**: set `FEISHU_MODE=mock` (offline demo) or fill the Feishu credentials (`FEISHU_APP_ID`/`_SECRET`/`_REDIRECT_URI`) for live data, then
-   ```bash
-   make run          # http://127.0.0.1:5000
-   ```
-   First live run: open the site → **Login** (Feishu OAuth) → **Sync** (admin) or wait for the auto-collect interval.
-3. **Production** (two workers, persistent DB volume):
-   ```bash
-   docker build -t rmhub .
-   docker run -d --name rmhub -p 8000:8000 --env-file .env -v /srv/rmhub/data:/app/data rmhub
-   ```
-   or without Docker:
-   ```bash
-   pip install -r requirements.txt
-   gunicorn -b 0.0.0.0:8000 -w 2 --timeout 120 "rmtask.web.app:create_app()"
-   ```
-4. **Checks**: `make test`; open `/settings` for SMTP status and `/notifications` for email audit.
-
-## 1. GitHub repository
-
-1. Create a repository, e.g. `rm-task-hub` (private is fine), at `https://github.com/<org>/rm-task-hub`.
-2. Push from this directory:
-   ```bash
-   git init
-   git add -A
-   git commit -m "feat: RoboMaster task & info hub"
-   git remote add origin git@github.com:<org>/rm-task-hub.git
-   git push -u origin main
-   ```
-3. Recommended `.gitignore` already excludes `.env`, `*.db`, `data/mock_state.json`, `venv` - never commit secrets.
-4. Add CI (optional): GitHub Actions running `python -m unittest discover -s tests`.
-
-## 2. Option A - Deploy the backend (Flask)
-
-Any host that runs Python 3.10+ works; the app uses only Flask + requests + stdlib (SQLite/SMTP).
-
-### A1. Docker (simplest on a VPS)
-
-A production `Dockerfile` is included in this repo (gunicorn + Flask on `python:3.12-slim`), with `.dockerignore` keeping secrets/local artifacts out of the image.
-
-```bash
-docker build -t rmhub .
-docker run -d --name rmhub -p 8000:8000 \
-  --env-file .env -v /srv/rmhub/data:/app/data rmhub
-```
-
-Mount a volume at `/app/data` so `rmtask.db` and mock state survive restarts. Secrets live in `.env` (excluded by `.dockerignore`), which is loaded at runtime from `--env-file`.
-
-### CI and static Pages
-
-The standalone CI and Pages workflows were removed. `deploy.yml` runs the full
-test suite before publishing and deploying the app. No Pages site is published.
-
-
-### A2. PaaS (Render / Railway / Fly.io)
-
-1. Push the repo to GitHub.
-2. New service: root dir `.`, build `pip install -r requirements.txt`, start `gunicorn -b 0.0.0.0:$PORT rmtask.web.app:create_app()`.
-3. Add environment variables from `.env.example` (App ID/Secret, redirect URI, SMTP, `FLASK_SECRET_KEY`).
-4. Attach a persistent disk / SQLite volume (e.g. `/app/data`) so `rmtask.db` and mock state survive restarts.
-
-### A3. Custom domain + HTTPS
-
-1. Buy a domain (e.g. `yourteam.dev`) at any registrar.
-2. Point DNS at the host: `A rm.yourteam.dev -> <server IP>` (or use a CNAME to a platform like Render/Railway). For Cloudflare, create an `A`/`CNAME` record and enable the orange-cloud proxy.
-3. Enable HTTPS with Let's Encrypt (VPS: `certbot --nginx -d rm.yourteam.dev`) or let the PaaS/caddy handle TLS automatically.
-4. Update Feishu: 开发配置 → 安全设置 → 重定向 URL -> `https://rm.yourteam.dev/oauth/callback`, and set the web-app home URL to `https://rm.yourteam.dev/` (then publish a new app version + admin approval).
-5. Update `.env` in production: `FEISHU_REDIRECT_URI=https://rm.yourteam.dev/oauth/callback`, `FEISHU_ADMIN_OPEN_IDS=...`, `FLASK_SECRET_KEY=<random>`, SMTP settings.
-
-### A4. Operations
-
-- **Scheduling collection**: cron / systemd timer running `python -m scripts.collect`, or press Sync in the UI.
-- **Backups**: copy `data/rmtask.db` (SQLite WAL) regularly.
-- **Logs**: `logs/` for CLI runs; gunicorn stdout for the web app.
-- **Security**: run behind HTTPS only; never expose `FEISHU_APP_SECRET` or tokens to the browser; keep `data/` outside the repo.
-
-## 3. Option B - GitHub Pages static snapshot
-
-For a read-only mirror under `https://<org>.github.io/rm-task-hub/`:
-
-1. Add a workflow `.github/workflows/pages.yml` that (on push/`workflow_dispatch`) installs requirements, runs `python -m scripts.collect`, renders the pages to `site/` (e.g. via a small static-export script using the same templates/JSON APIs), then uploads via `actions/upload-pages-artifact` and `actions/deploy-pages`.
-2. Repository Settings → Pages → Source: GitHub Actions.
-3. Custom domain: Settings → Pages → Custom domain -> `rm.yourteam.dev`, then add a `CNAME` (`rm.yourteam.dev` -> `<org>.github.io`) in DNS.
-
-Limitation: GitHub Pages serves only static files, so task submit/cancel and OAuth callback need Option A. The static export is a snapshot of the dashboard/timeline after `collect`.
-
-## 4. Suggested end state for the ultimate goal
-
-1. GitHub repo: `rm-task-hub` (private) - code + docs in this repo.
-2. Live site: `https://rm.yourteam.dev` on Docker/VPS or PaaS with HTTPS + Feishu web-app embedding.
-3. Feishu app: 企业自建应用 with 网页应用 capability, redirect URL matching prod, scopes per `docs/FEISHU_SETUP.md`.
-4. Cron collection + email notifications enabled.
-5. Optional: GitHub Pages static mirror for the public-facing competition info.
-
-## dashboard.herkules.dev (independent production deployment)
-
-`.github/workflows/deploy.yml` tests, builds and publishes a Linux/amd64 image,
-then deploys its immutable GHCR digest on every push to `main`. A manual dispatch
-on `main` redeploys that revision. It changes only the `larkai` Compose project in
-`~/larkai`; it never deploys the Herkules application stack.
-
-The Herkules repository owns the one-time Caddy route and DNS/Cloudflare Access
-configuration. LarkAI owns its image, runtime environment and database. Native
-Herkules OIDC handles the website identity and roles. Optional Cloudflare Access
-remains an additional edge gate when `CF_ACCESS_ISSUER` and `CF_ACCESS_AUD` are set.
-
-Configure the GitHub `production` environment with the OIDC and Feishu secrets
-listed below. A `LARKAI_ENV` dotenv secret may supply additional runtime settings;
-individual secrets override corresponding values. Missing values preserve the
-server's existing `.env`. Example non-secret settings:
+Set these backend variables for production:
 
 ```dotenv
 FEISHU_MODE=live
-FEISHU_REDIRECT_URI=https://dashboard.herkules.dev/oauth/callback
-OIDC_ISSUER=https://herkules.dev/auth
+HOST=0.0.0.0
+PORT=8000
+DATABASE_PATH=/app/data/larkai.sqlite3
+FRONTEND_DIST=/app/frontend/dist
+PUBLIC_ORIGIN=https://dashboard.example.com
+OIDC_ISSUER=https://identity.example.com/auth
 OIDC_CLIENT_ID=larkai
-PUBLIC_ORIGIN=https://dashboard.herkules.dev
+OIDC_CLIENT_SECRET=your-confidential-client-secret
+FEISHU_APP_ID=cli_your_app
+FEISHU_APP_SECRET=your-feishu-secret
+FEISHU_REDIRECT_URI=https://dashboard.example.com/oauth/callback
 RM_AUTO_COLLECT_SECONDS=300
 ```
 
-Provision a stable random `FLASK_SECRET_KEY`, `OIDC_CLIENT_SECRET`, and the Feishu
-app credentials. Register both providers' callback URLs. Users first sign in
-through Herkules; Tasks offers Feishu authorization only when needed. No personal
-connection is required to view shared dashboard data. A deployment never links
-existing Feishu users by matching their names or email addresses.
+Register `PUBLIC_ORIGIN/oidc/callback` with Herkules and `FEISHU_REDIRECT_URI` with Feishu. Herkules must expose OIDC discovery, RS256 signed ID tokens and UserInfo with `sub` and `role` (`admin` or `member`). Serve through HTTPS. The public origin is the browser-visible origin and must have no path. Session IDs are random and stored in SQLite; no Flask signing secret is used.
 
-`RM_AUTO_COLLECT_SECONDS` controls the existing per-process collector. With multiple
-Gunicorn workers it runs once per worker; a single collector schedule is preferable
-for shared production sync. This feature does not change collection ownership or
-notification behavior.
+Optional Cloudflare Access origin verification uses `CF_ACCESS_ISSUER` (the HTTPS `*.cloudflareaccess.com` team origin) and `CF_ACCESS_AUD`. The origin verifies the signed assertion rather than trusting identity headers. This is independent of a Cloudflare Worker; the frontend currently uses standard Vite hosting only.
 
-`larkai_data` persists SQLite across releases. Each subsequent deployment takes a
-consistent SQLite snapshot into `~/larkai/backups/` and retains the previous image
-and Compose configuration. Failed startup restores that image/configuration;
-database migrations are **not** reversed. To roll back manually:
+## Container and storage
 
 ```sh
-cd ~/larkai
-cp backups/compose.previous.yml incoming/compose.yml
-cp backups/image.previous.env incoming/image.env
-bash apply.sh
+docker run -d --name larkai -p 8000:8000 --env-file .env \
+  -v larkai-data:/app/data larkai
 ```
 
-These on-host snapshots do not replace an off-host backup policy. The workflow
-checks `/healthz` and the public authentication redirect. End-to-end team sign-in must be checked in a
-browser with an authorized account.
+Use one container per SQLite database. Named volumes created by this image inherit its writable directory. For an existing bind mount or old volume, grant UID/GID 10001 write access before starting the image. Health is `GET /healthz`; it does not require identity or Cloudflare Access.
 
-### Individual GitHub secrets
+The rewrite starts a fresh `larkai.sqlite3`. Existing `rmtask.db` and Flask session files are ignored. Users sign in and reconnect Feishu. Refresh members, then sync to rebuild the data. Existing environment values may remain, but `FLASK_SECRET_KEY`, `RM_DB_PATH`, `RM_MOCK_DATA_DIR` and `FEISHU_BITABLE_TASKS_TABLE_ID` no longer configure the new runtime. Use `DATABASE_PATH`; Bitable mutations use the task's recorded source table.
 
-Instead of `LARKAI_ENV`, the production environment (or repository) can hold
-individual secrets named `FEISHU_APP_ID`, `FEISHU_APP_SECRET`,
-`FEISHU_REDIRECT_URI`, `FEISHU_WIKI_NODE_TOKEN`, `FEISHU_BITABLE_APP_TOKEN`,
-`FEISHU_BITABLE_SUBMIT_TABLE_ID`, `FEISHU_BITABLE_TASKS_TABLE_ID`,
-`FEISHU_ADMIN_OPEN_IDS`, and `FEISHU_SCOPES`. Non-empty individual secrets
-override the corresponding values in `LARKAI_ENV`; unspecified values on the
-server are preserved. Run Deploy LarkAI after changing secrets.
+## Existing GitHub/VPS flow
 
+`.github/workflows/deploy.yml` runs Rust formatting/lints/tests, frontend build/unit/browser tests and deployment-helper tests, then publishes an immutable GHCR image. The deployment job stages the existing Compose and environment helpers over SSH, starts the new image, and checks the Herkules redirect. `deploy/compose.yml` connects to the external `herkules_default` network with the `larkai` alias. No host port is published there.
 
-## Herkules OpenID Connect
+`deploy/apply.sh` backs up the Rust SQLite database when present and rolls back image/configuration if container startup fails. First migration from the Python image does not import old data. The deployment helper initializes the data directory ownership for the unprivileged Rust container. Schema changes should remain compatible with the immediately previous Rust release if automatic rollback is needed.
 
-Production uses the confidential `larkai` client at `https://herkules.dev/auth`.
-`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `PUBLIC_ORIGIN` are
-required by production Compose and can be set as individual GitHub environment
-secrets. The exact callback is `https://dashboard.herkules.dev/oidc/callback`.
-Authlib handles discovery, authorization code + S256 PKCE, state, nonce, and
-signed ID token verification. Tokens are held in private server-side sessions
-under `/app/data/sessions`; the browser gets a Secure, HttpOnly, host-only cookie.
-Session expiry requires another code exchange (normally using the existing
-Herkules login), rather than storing long-lived refresh tokens.
-
-Each authenticated request fetches UserInfo and verifies its subject and role.
-Only `role=admin` from Herkules authorizes sync, diagnostics, deletion and settings;
-`FEISHU_ADMIN_OPEN_IDS` and local Feishu admin flags do not grant production roles.
-Provider failure returns 503, disabled/invalid accounts are signed out, and role
-changes take effect on the next request. Forms use session-bound CSRF tokens.
-
-**Connect Feishu** is separate from website login. `/oauth/callback` stores the
-Feishu connection against the authenticated Herkules `sub`. A Feishu account
-cannot be linked to two Herkules accounts; names/emails never link identities.
-No manual Open ID list or directory lookup permission is needed. The original
-Feishu callback URI still needs to be allowlisted in the Feishu app.
-
-Cloudflare Access remains configured during rollout; retiring it is a separate
-infrastructure change. Cloudflare DNS/proxy stays enabled. `/healthz` returns only `{"ok":true}` without authentication.
+Use `RUST_LOG=larkai=info,tower_http=info` for logs. Upstream token payloads are not returned to browsers. Do not put server secrets into `VITE_*` variables: they are compiled into the public JavaScript bundle.

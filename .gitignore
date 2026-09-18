@@ -13,3 +13,14 @@ data/team_info.json
 .DS_Store
 
 .venv*/
+
+/target/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/*.tsbuildinfo
+
+/frontend/test-results/
+/frontend/playwright-report/
+/data/
+*.sqlite3-wal
+*.sqlite3-shm
