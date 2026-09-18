@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: install run test collect export
+.PHONY: install run test collect notify export
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -13,6 +13,9 @@ test:
 
 collect:
 	$(PYTHON) -m scripts.collect
+
+notify:
+	$(PYTHON) -m scripts.collect --notify
 
 export:
 	$(PYTHON) -m scripts.export_static --out site

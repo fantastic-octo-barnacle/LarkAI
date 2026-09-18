@@ -10,7 +10,7 @@ pip install -r requirements.txt
 cp .env.example .env            # FEISHU_MODE=live is the default once credentials are set
 python run.py                   # http://127.0.0.1:5000
 python -m scripts.collect       # optional CLI collection + digest
-python -m scripts.collect --notify   # also email an important-items digest
+python -m scripts.collect --notify   # email an important-items digest (deduped since the last digest)
 make run / make test / make collect / make export   # shortcuts (see Makefile)
 ```
 
@@ -30,6 +30,8 @@ Open `http://127.0.0.1:5000`, click **Login** (Feishu OAuth), click **Sync** (ad
 - **Notifications** (`/notifications`): audit trail of every task-change email (delivered / dry-run / failed).
 - **Settings** (`/settings`): notification recipients, SMTP status, run mode.
 - **JSON APIs**: `/api/stats.json`, `/api/timeline.json`, `/api/team.json`, `/api/members.json` for further integration.
+
+The background auto-collect (`RM_AUTO_COLLECT_SECONDS`) also emails the important digest automatically; `make notify` does the same on demand (both dedupe against `last_digest_ts`).
 
 ## Key design decisions
 
