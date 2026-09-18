@@ -43,7 +43,7 @@ def collect_persons(provider: LiveProvider, settings, open_id: str) -> dict[str,
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=8)
+    parser.add_argument("--limit", type=int, default=30)
     args = parser.parse_args()
 
     load_env()
