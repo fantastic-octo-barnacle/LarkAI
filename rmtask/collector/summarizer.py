@@ -30,12 +30,12 @@ def timeline_rows(events: list[EventRecord]) -> list[dict[str, Any]]:
             "importance": ev.importance,
             "tags": ev.tags,
         })
-    rows.sort(key=lambda r: r["ts"], reverse=True)
+    rows.sort(key=lambda r: (not r["ts"], r["ts"]))
     return rows
 
 
 def group_by_day(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Chronological buckets (descending) for the time-axis view."""
+    """Chronological buckets (ascending) for the time-axis view."""
     out: list[dict[str, Any]] = []
     for row in rows:
         if not row["ts"]:

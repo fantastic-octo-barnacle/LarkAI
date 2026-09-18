@@ -150,14 +150,14 @@ class GroupingTest(unittest.TestCase):
 
     def test_group_by_day(self) -> None:
         days = group_by_day(self._rows())
-        self.assertEqual([d["day"] for d in days], ["2026-09-16", "2026-09-15"])
-        self.assertEqual(len(days[0]["items"]), 1)
-        self.assertEqual(len(days[1]["items"]), 2)
+        self.assertEqual([d["day"] for d in days], ["2026-09-15", "2026-09-16"])
+        self.assertEqual(len(days[0]["items"]), 2)
+        self.assertEqual(len(days[1]["items"]), 1)
 
     def test_group_by_source(self) -> None:
         groups = group_by_source(self._rows())
-        self.assertEqual([g["source"] for g in groups], ["task", "message"])
-        self.assertEqual(len(groups[0]["items"]), 2)
+        self.assertEqual([g["source"] for g in groups], ["message", "task"])
+        self.assertEqual(len(groups[0]["items"]), 1)
 
 
 class PipelineResilienceTest(unittest.TestCase):
