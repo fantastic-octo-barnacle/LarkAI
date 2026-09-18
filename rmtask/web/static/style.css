@@ -119,6 +119,15 @@ label.chk-row { display: inline-flex; flex-direction: row; align-items: center; 
 .wl-tasks { margin: 8px 0 4px; padding-left: 20px; list-style: square; }
 .wl-tasks li { padding: 3px 0; }
 
+/* -- member picker: toggle list + search + temp-save text block -- */
+.picker input.search, #member-search { width: 100%; box-sizing: border-box; padding: 8px 10px; margin: 4px 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); font-size: 14px; }
+.picker-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; background: var(--panel); }
+.picker-list .toggle { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.picker-list .toggle:hover { background: var(--panel2); }
+.picker-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.picker-actions textarea { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px; }
+.picker .muted { display: block; margin-top: 6px; }
+
 /* -- misc badges -- */
 .badge.st-in_progress { border-color: var(--accent); color: var(--accent2); }
 .badge.src-bitable { border-color: var(--warn); color: var(--warn); }

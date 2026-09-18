@@ -20,13 +20,19 @@
     </label>
     <label>Priority<select name="priority"><option>NORMAL</option><option>HIGH</option><option>URGENT</option></select></label>
     <label>Due<input type="datetime-local" name="due"></label>
-    <label>Assignees (multi-select)
-      <select name="owner_open_id" multiple size="6">
-        {% if current_user %}<option value="{{ current_user.open_id }}">Me ({{ current_user.name }})</option>{% endif %}
-        {% for a in assignees %}<option value="{{ a.open_id }}">{{ a.name }}</option>{% endfor %}
-      </select>
-      <span class="muted small">Ctrl/Cmd-click to pick more than one; empty = assign to yourself.</span>
-    </label>
+    <div class="full picker">
+      <label>Assignees (toggle)</label>
+      <input class="search" id="assignee-search" type="search" placeholder="Search members…" autocomplete="off">
+      <div class="picker-list" id="assignee-list">
+        {% if current_user %}<label class="toggle" data-name="{{ current_user.name }}"><input type="checkbox" name="owner_open_id" value="{{ current_user.open_id }}" data-name="{{ current_user.name }}"> {{ current_user.name }} (me)</label>{% endif %}
+        {% for a in assignees %}{% if not current_user or a.open_id != current_user.open_id %}<label class="toggle" data-name="{{ a.name }}"><input type="checkbox" name="owner_open_id" value="{{ a.open_id }}" data-name="{{ a.name }}"> {{ a.name }}</label>{% endif %}{% endfor %}
+      </div>
+      <div class="picker-actions">
+        <textarea id="assignee-draft" rows="2" placeholder="Temp save — selected assignees (kept in this browser)"></textarea>
+        <span><button type="button" class="btn small" id="assignee-copy">Copy</button> <button type="button" class="btn small" id="assignee-clear">Clear</button> <span class="muted small" id="assignee-count"></span></span>
+      </div>
+      <span class="muted small">Toggle to pick one or many; search filters the list; empty = assign to yourself.</span>
+    </div>
     <label>研发组别（可多选）
       <select name="divisions" multiple size="4">
         {% for o in task_options.divisions %}<option value="{{ o }}">{{ o }}</option>{% endfor %}

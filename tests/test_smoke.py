@@ -267,11 +267,22 @@ class SmokeTest(unittest.TestCase):
         resp = self.client.get("/tasks")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b'name="owner_open_id"', resp.data)
+        self.assertIn(b'id="assignee-search"', resp.data)
+        self.assertIn(b'id="assignee-draft"', resp.data)
+        self.assertIn(b'class="toggle"', resp.data)
         self.assertIn("步兵（HKU）".encode(), resp.data)
         self.assertIn(b'name="category"', resp.data)
         self.assertIn(b'name="divisions"', resp.data)
         members = self.client.get("/api/members.json").get_json()
         self.assertTrue(any(m["open_id"] == "ou_vision" for m in members))
+
+    def test_dashboard_member_tools(self) -> None:
+        self.login()
+        resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'id="member-toggle"', resp.data)
+        self.assertIn(b'id="member-search"', resp.data)
+        self.assertIn(b'id="member-draft"', resp.data)
 
     def test_member_picker_uses_cached_directory(self) -> None:
         self.login()

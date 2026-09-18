@@ -59,10 +59,18 @@
   </section>
   <section class="card">
     <h2>Team members</h2>
-    <div class="member-grid">
-      {% for m in team.get('members', []) %}
-        <div class="member"><b>{{ m.get('name', '') }}</b><span class="muted">{{ m.get('role', '') }}</span></div>
-      {% endfor %}
+    <label class="chk-row"><input type="checkbox" id="member-toggle" checked> Show team members</label>
+    <div id="member-panel">
+      <input class="search" id="member-search" type="search" placeholder="Search members…" autocomplete="off">
+      <div class="member-grid" id="member-grid">
+        {% for m in team.get('members', []) %}
+          <div class="member" data-member-name="{{ m.get('name', '') }}" data-member-role="{{ m.get('role', '') }}"><b>{{ m.get('name', '') }}</b><span class="muted">{{ m.get('role', '') }}</span></div>
+        {% endfor %}
+      </div>
+      <div class="picker-actions">
+        <textarea id="member-draft" rows="2" placeholder="Temp save — visible member names (kept in this browser)"></textarea>
+        <span><button type="button" class="btn small" id="member-copy">Copy</button> <span class="muted small" id="member-count"></span></span>
+      </div>
     </div>
   </section>
 </div>
