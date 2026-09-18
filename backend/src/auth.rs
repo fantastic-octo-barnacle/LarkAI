@@ -26,6 +26,8 @@ pub struct Session {
     pub role: String,
     pub csrf: String,
     pub access_token: String,
+    #[serde(default)]
+    pub id_token: String,
     pub token_expires: i64,
     pub oauth_state: String,
     pub nonce: String,
@@ -144,14 +146,15 @@ async fn verify_token(
             ),
         "Unsupported signing algorithm"
     );
-    let jwks: jsonwebtoken::jwk::JwkSet = app
-        .http
-        .get(jwks_uri)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let mut jwks: jsonwebtoken::jwk::JwkSet =
+        serde_json::from_value(app.auth_cache.get(&app.http, jwks_uri, false).await?)?;
+    if head
+        .kid
+        .as_deref()
+        .is_some_and(|kid| jwks.find(kid).is_none())
+    {
+        jwks = serde_json::from_value(app.auth_cache.get(&app.http, jwks_uri, true).await?)?;
+    }
     let key = jwks
         .find(
             head.kid
@@ -168,6 +171,8 @@ async fn verify_token(
         );
     }
     let mut validation = jsonwebtoken::Validation::new(head.alg);
+    validation.leeway = 0;
+    validation.validate_nbf = true;
     validation.set_audience(&[audience]);
     validation.set_issuer(&[issuer]);
     validation.set_required_spec_claims(&["exp", "iat", "sub", "iss", "aud"]);
@@ -182,13 +187,13 @@ async fn verify_token(
 }
 async fn metadata(app: &App) -> anyhow::Result<Value> {
     let issuer = app.cfg.get("OIDC_ISSUER").trim_end_matches('/');
-    let m: Value = app
-        .http
-        .get(format!("{issuer}/.well-known/openid-configuration"))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
+    let m = app
+        .auth_cache
+        .get(
+            &app.http,
+            &format!("{issuer}/.well-known/openid-configuration"),
+            false,
+        )
         .await?;
     anyhow::ensure!(m["issuer"].as_str() == Some(issuer), "OIDC issuer mismatch");
     for key in [
@@ -313,7 +318,10 @@ async fn guard_inner(app: &App, req: &mut Request) -> Result<Option<Response>> {
         "/auth/login" | "/oidc/login" | "/oidc/callback"
     );
     if app.cfg.oidc() && !public {
-        if s.subject.is_empty() || s.token_expires <= chrono::Utc::now().timestamp() {
+        if s.subject.is_empty()
+            || s.id_token.is_empty()
+            || s.token_expires <= chrono::Utc::now().timestamp()
+        {
             if path.starts_with("/api/") || req.method() != axum::http::Method::GET {
                 return Err(Error(
                     StatusCode::UNAUTHORIZED,
@@ -324,14 +332,26 @@ async fn guard_inner(app: &App, req: &mut Request) -> Result<Option<Response>> {
             save(app, &s).await?;
             return Ok(Some(with_cookie(app, &s, Redirect::to("/oidc/login"))));
         }
-        let p = userinfo(app, &s.access_token, &s.subject)
-            .await
-            .map_err(|_| Error(StatusCode::UNAUTHORIZED, "authentication_required".into()))?;
-        s.role = text(&p["role"]);
-        s.name = text(&p["name"]);
-        if s.name.is_empty() {
-            s.name = text(&p["email"]);
+        let validated = async {
+            let m = metadata(app).await?;
+            let claims = verify_token(
+                app,
+                &s.id_token,
+                &text(&m["jwks_uri"]),
+                app.cfg.get("OIDC_ISSUER").trim_end_matches('/'),
+                app.cfg.get("OIDC_CLIENT_ID"),
+                &oidc_algorithms(&m),
+            )
+            .await?;
+            anyhow::ensure!(
+                claims["sub"].as_str() == Some(&s.subject)
+                    && matches!(s.role.as_str(), "admin" | "member"),
+                "Invalid session identity"
+            );
+            Ok::<_, anyhow::Error>(())
         }
+        .await;
+        validated.map_err(|_| Error(StatusCode::UNAUTHORIZED, "authentication_required".into()))?;
     }
     if !matches!(
         *req.method(),
@@ -385,6 +405,7 @@ pub async fn oidc_login(
     }
     s.subject.clear();
     s.access_token.clear();
+    s.id_token.clear();
     s.role.clear();
     s.oauth_state = random();
     s.nonce = random();
@@ -486,9 +507,12 @@ pub async fn oidc_callback(
         s.subject = text(&c["sub"]);
         s.name = text(&profile["name"]);
         s.role = text(&profile["role"]);
-        s.access_token = text(&token["access_token"]);
-        s.token_expires =
-            chrono::Utc::now().timestamp() + token["expires_in"].as_i64().unwrap_or(900);
+        s.id_token = text(&token["id_token"]);
+        s.access_token.clear();
+        s.token_expires = c["exp"].as_i64().unwrap_or(0).min(
+            chrono::Utc::now().timestamp()
+                + token["expires_in"].as_i64().unwrap_or(900).clamp(0, 900),
+        );
         Ok(profile)
     }
     .await;
@@ -555,13 +579,7 @@ pub async fn feishu_login(
         ("redirect_uri", app.cfg.get("FEISHU_REDIRECT_URI")),
         ("response_type", "code"),
         ("state", s.oauth_state.as_str()),
-        (
-            "scope",
-            app.cfg.value(
-                "FEISHU_SCOPES",
-                "auth:user.id:read task:task:read offline_access",
-            ),
-        ),
+        ("scope", &app.cfg.feishu_scopes()),
     ]);
     Ok(with_cookie(&app, &s, Redirect::to(u.as_str())))
 }
@@ -731,6 +749,76 @@ pub async fn check_oidc(app: &App) -> anyhow::Result<Value> {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn protected_requests_validate_local_identity_without_userinfo() {
+        let app = App::new(crate::config::Config(
+            [
+                ("DATABASE_PATH".into(), ":memory:".into()),
+                ("OIDC_ISSUER".into(), "https://issuer.invalid".into()),
+                ("OIDC_CLIENT_ID".into(), "larkai".into()),
+            ]
+            .into(),
+        ))
+        .await
+        .unwrap();
+        app.auth_cache
+            .seed(
+                "https://issuer.invalid/.well-known/openid-configuration",
+                json!({
+                    "issuer":"https://issuer.invalid",
+                    "authorization_endpoint":"https://issuer.invalid/authorize",
+                    "token_endpoint":"https://issuer.invalid/token",
+                    "userinfo_endpoint":"https://issuer.invalid/userinfo",
+                    "jwks_uri":"https://issuer.invalid/jwks"
+                }),
+            )
+            .await;
+        app.auth_cache
+            .seed(
+                "https://issuer.invalid/jwks",
+                serde_json::from_str(include_str!("../tests/fixtures/jwks.json")).unwrap(),
+            )
+            .await;
+        let key = jsonwebtoken::EncodingKey::from_rsa_pem(include_bytes!(
+            "../tests/fixtures/test-only.pem"
+        ))
+        .unwrap();
+        let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
+        header.kid = Some("test-key".into());
+        let now = chrono::Utc::now().timestamp();
+        let token = jsonwebtoken::encode(&header, &json!({"sub":"user","iss":"https://issuer.invalid","aud":"larkai","iat":now,"exp":now+300}), &key).unwrap();
+        let mut s = Session {
+            id: random(),
+            subject: "user".into(),
+            role: "admin".into(),
+            id_token: token,
+            token_expires: now + 300,
+            ..Default::default()
+        };
+        save(&app, &s).await.unwrap();
+        let make_request = || {
+            axum::http::Request::builder()
+                .uri("/api/session")
+                .header("Cookie", format!("larkai={}", s.id))
+                .body(axum::body::Body::empty())
+                .unwrap()
+        };
+        let mut request = make_request();
+        assert!(
+            guard_inner(&app, &mut request)
+                .await
+                .is_ok_and(|r| r.is_none())
+        );
+        assert_eq!(request.extensions().get::<Session>().unwrap().role, "admin");
+        let mut request = make_request();
+        s.subject = "different-user".into();
+        save(&app, &s).await.unwrap();
+        assert!(guard_inner(&app, &mut request).await.is_err());
+        s.subject = "user".into();
+        s.token_expires = now - 1;
+        save(&app, &s).await.unwrap();
+        assert!(guard_inner(&app, &mut request).await.is_err());
+    }
+    #[tokio::test]
     async fn signed_identity_checks_signature_issuer_audience_and_expiry() {
         let keys: Value =
             serde_json::from_str(include_str!("../tests/fixtures/jwks.json")).unwrap();
@@ -755,6 +843,13 @@ mod tests {
         let now = chrono::Utc::now().timestamp();
         let claims = json!({"sub":"user","iss":"https://issuer.test","aud":"larkai","iat":now,"exp":now+300});
         let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+        assert!(
+            signed_claims(&app, &token, &uri, "https://issuer.test", "larkai")
+                .await
+                .is_ok()
+        );
+        // Once cached, signature checks work without the signing-key server.
+        server.abort();
         assert!(
             signed_claims(&app, &token, &uri, "https://issuer.test", "larkai")
                 .await

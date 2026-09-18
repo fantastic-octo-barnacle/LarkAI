@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod auth_cache;
 pub mod config;
 pub mod model;
 pub mod notify;
@@ -22,6 +23,7 @@ pub struct App {
     pub http: reqwest::Client,
     pub sync_lock: Arc<tokio::sync::Mutex<()>>,
     pub token_lock: Arc<tokio::sync::Mutex<()>>,
+    pub auth_cache: Arc<auth_cache::Cache>,
 }
 impl App {
     pub async fn new(cfg: Config) -> anyhow::Result<Self> {
@@ -36,6 +38,7 @@ impl App {
             http,
             sync_lock: Arc::new(tokio::sync::Mutex::new(())),
             token_lock: Arc::new(tokio::sync::Mutex::new(())),
+            auth_cache: Arc::new(auth_cache::Cache::default()),
         })
     }
 }
@@ -53,6 +56,9 @@ impl Error {
 }
 impl From<anyhow::Error> for Error {
     fn from(e: anyhow::Error) -> Self {
+        if let Some(error) = e.downcast_ref::<provider::FeishuError>() {
+            return Self(StatusCode::BAD_GATEWAY, error.to_string());
+        }
         tracing::error!(error=%e, "Request failed");
         Self(
             StatusCode::INTERNAL_SERVER_ERROR,

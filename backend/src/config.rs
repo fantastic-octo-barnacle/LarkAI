@@ -76,6 +76,26 @@ impl Config {
             .map(str::to_owned)
             .collect()
     }
+    pub fn feishu_scopes(&self) -> String {
+        let mut scopes: Vec<String> = self
+            .value(
+                "FEISHU_SCOPES",
+                "auth:user.id:read task:task:read offline_access",
+            )
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect();
+        for scope in [
+            "im:message.history:readonly",
+            "contact:contact.base:readonly",
+            "base:field:read",
+        ] {
+            if !scopes.iter().any(|s| s == scope) {
+                scopes.push(scope.into());
+            }
+        }
+        scopes.join(" ")
+    }
     pub fn mode(&self) -> &str {
         self.value("FEISHU_MODE", "mock")
     }

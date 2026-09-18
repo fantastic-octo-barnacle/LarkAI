@@ -30,7 +30,7 @@ Set `FEISHU_MODE=live`, `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_REDIRECT_U
 
 Production uses Herkules OIDC for website sign-in and a separate Feishu connection linked to the immutable OIDC subject. Herkules UserInfo controls admin roles. Without OIDC, `FEISHU_ADMIN_OPEN_IDS` controls admins; if unset, the first Feishu login becomes admin.
 
-Dashboard, timeline and workload are shared team views. Task actions require a connected account. Sync, member refresh, diagnostics, settings and deletion additionally require admin access. When OIDC is configured, every protected request checks the current identity and role. Optional Cloudflare Access JWT verification remains supported.
+Dashboard, timeline and workload are shared team views. Task actions require a connected account. Sync, member refresh, diagnostics, settings and deletion additionally require admin access. When OIDC is configured, every protected request validates the signed identity and the server-side role established at sign-in. Optional Cloudflare Access JWT verification remains supported.
 
 ## Checks
 
@@ -69,3 +69,9 @@ deploy/            Docker Compose and deployment helpers
 ```
 
 [Architecture](docs/ARCHITECTURE.md) · [Feishu setup](docs/FEISHU_SETUP.md) · [Collection](docs/COLLECTION.md) · [Task operations](docs/INTERACTIVE_TASKS.md) · [Email](docs/EMAIL_NOTIFICATIONS.md)
+
+### Authentication and Feishu permissions
+
+OIDC sign-in validates the provider ID token and checks UserInfo once to obtain the current role. Requests then validate that ID token locally against cached signing keys; tokens stay in the server-side session, behind an HttpOnly cookie. Discovery and JWKS caches last five minutes. Unknown keys trigger a refresh at most once per 30 seconds. Signature, issuer, audience, subject and expiry remain enforced. Sessions are capped at 15 minutes and the token expiry, so role changes and account disabling take effect at the next sign-in within that window. Existing sessions without an ID token must sign in again after upgrading.
+
+Feishu authorization always requests `im:message.history:readonly`, `contact:contact.base:readonly`, and `base:field:read` in addition to `FEISHU_SCOPES`. Enable these **user** permissions in the Feishu app console and publish/approve the app configuration if required by the tenant, then use **Settings → Reconnect Feishu** to grant them. Updating the scope configuration does not expand an existing token’s grants. Directory visibility is still limited to the app/user’s permitted organization range. Collection uses pages of 50 and follows cursors; it retains the previous source data on failure.

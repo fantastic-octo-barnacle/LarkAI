@@ -6,6 +6,15 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
+#[derive(Debug)]
+pub struct FeishuError(pub String);
+impl std::fmt::Display for FeishuError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for FeishuError {}
+
 pub async fn call(
     app: &App,
     method: &str,
@@ -24,13 +33,28 @@ pub async fn call(
     if let Some(body) = body {
         req = req.json(&body);
     }
-    let response = req.send().await?.error_for_status()?;
+    let response = req.send().await?;
+    let status = response.status();
     let v: Value = response.json().await?;
-    anyhow::ensure!(
-        v["code"].as_i64() == Some(0),
-        "Feishu request {method} {path} failed (code {})",
-        v["code"]
-    );
+    if !status.is_success() || v["code"].as_i64() != Some(0) {
+        let code = v["code"].as_i64().unwrap_or(0);
+        let scopes: Vec<&str> = v["error"]["permission_violations"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|p| p["subject"].as_str())
+            .collect();
+        let message = if code == 99991679 {
+            format!(
+                "Feishu permission missing (code {code}). Enable one of [{}] under user permissions, then reconnect Feishu in Settings.",
+                scopes.join(", ")
+            )
+        } else {
+            format!("Feishu request failed (HTTP {status}, code {code}). Check server logs.")
+        };
+        tracing::warn!(%status, code, path, "Feishu API rejected request");
+        return Err(FeishuError(message).into());
+    }
     Ok(v.get("data").cloned().unwrap_or(v))
 }
 pub async fn pages(
@@ -45,13 +69,18 @@ pub async fn pages(
     let mut seen = HashSet::new();
     loop {
         let separator = if path.contains('?') { '&' } else { '?' };
-        let query = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("page_token", &cursor)
-            .finish();
+        let query = {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query.append_pair("page_size", "50");
+            if !cursor.is_empty() {
+                query.append_pair("page_token", &cursor);
+            }
+            query.finish()
+        };
         let v = call(
             app,
             if post { "POST" } else { "GET" },
-            &format!("{path}{separator}page_size=100&{query}"),
+            &format!("{path}{separator}{query}"),
             token,
             post.then(|| json!({})),
         )
@@ -684,7 +713,7 @@ pub async fn sync(app: &App, subject: &str) -> anyhow::Result<Value> {
                 }
                 Err(e) => {
                     tracing::warn!(source=name,error=%e,"Collection source failed");
-                    warnings.push(format!("{name}: collection failed; previous data retained. Check permissions and server logs."));
+                    warnings.push(format!("{name}: {e} Previous data retained."));
                 }
             }
         }
@@ -701,7 +730,7 @@ pub async fn refresh_members(app: &App, subject: &str) -> anyhow::Result<Value> 
     let token = user_token(app, subject).await?;
     let mut warnings = vec![];
     let mut records = Vec::new();
-    match pages(app,"/contact/v3/users/find_by_department?department_id=0&department_id_type=open_department_id&user_id_type=open_id","items",&token,false).await{Ok(v)=>records.extend(v),Err(e)=>{tracing::warn!(error=%e,"Directory collection failed");warnings.push("Organization directory unavailable".to_owned());}}
+    match pages(app,"/contact/v3/users/find_by_department?department_id=0&department_id_type=open_department_id&user_id_type=open_id","items",&token,false).await{Ok(v)=>records.extend(v),Err(e)=>{tracing::warn!(error=%e,"Directory collection failed");warnings.push(format!("Organization directory: {e}"));}}
     // Traverse department hierarchy so directory members outside the root are included.
     match pages(
         app,
@@ -721,7 +750,7 @@ pub async fn refresh_members(app: &App, subject: &str) -> anyhow::Result<Value> 
                 match pages(app,&format!("/contact/v3/users/find_by_department?{q}&department_id_type=open_department_id&user_id_type=open_id"),"items",&token,false).await{Ok(v)=>records.extend(v),Err(_)=>warnings.push(format!("Department {id} unavailable"))}
             }
         }
-        Err(_) => warnings.push("Department listing unavailable".into()),
+        Err(e) => warnings.push(format!("Department listing: {e}")),
     }
     match chats(app, &token).await {
         Ok(chats) => {

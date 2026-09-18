@@ -14,7 +14,7 @@ The browser runs a React/TypeScript SPA built by Vite. In development, Vite prox
 
 SQLite stores tasks/events/members as typed JSON cache entries, with separate tables for settings, identity connections, sessions and notification history. Namespaced IDs avoid collisions across task-v2, Bitable tables and mock tasks. SQLx applies versioned migrations on startup. `DATABASE_PATH` defaults to a new `data/larkai.sqlite3`; there is no old-data migration.
 
-Feishu connection ownership is unique by open ID and linked to OIDC `sub`, never email. Tokens and SMTP credentials remain server-side. The cookie contains only a random session ID and uses HttpOnly/SameSite=Lax; HTTPS enables Secure and the `__Host-` prefix. Every mutation requires the session CSRF token in `X-CSRF-Token`. Herkules UserInfo is checked on protected requests so demotions take effect immediately.
+Feishu connection ownership is unique by open ID and linked to OIDC `sub`, never email. Tokens and SMTP credentials remain server-side. The cookie contains only a random session ID and uses HttpOnly/SameSite=Lax; HTTPS enables Secure and the `__Host-` prefix. Every mutation requires the session CSRF token in `X-CSRF-Token`. Herkules UserInfo establishes the role at sign-in. Protected requests validate the ID token locally using cached JWKS; sessions expire within 15 minutes, when roles and account status are rechecked through sign-in.
 
 ## API
 

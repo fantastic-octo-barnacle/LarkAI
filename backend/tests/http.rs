@@ -490,3 +490,54 @@ async fn spa_deep_links_return_success_without_masking_api_not_found() {
     assert_eq!(body["error"], "Unknown API endpoint");
     tokio::fs::remove_dir_all(path).await.unwrap();
 }
+
+#[tokio::test]
+async fn feishu_pagination_and_permission_errors() {
+    use axum::{Json, extract::Query, routing::get};
+    use std::collections::HashMap;
+    let upstream = Router::new()
+        .route("/open-apis/items", get(|Query(q): Query<HashMap<String,String>>| async move {
+            assert_eq!(q.get("page_size").map(String::as_str), Some("50"));
+            if let Some(cursor) = q.get("page_token") {
+                assert_eq!(cursor, "next /+&");
+                Json(json!({"code":0,"data":{"items":[2],"has_more":false}}))
+            } else {
+                Json(json!({"code":0,"data":{"items":[1],"has_more":true,"page_token":"next /+&"}}))
+            }
+        }))
+        .route("/open-apis/denied", get(|| async {
+            (StatusCode::BAD_REQUEST, Json(json!({"code":99991679,"error":{"permission_violations":[{"subject":"im:message.history:readonly"}]}})))
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+    let mut app = app().await;
+    app.cfg.0.insert("FEISHU_BASE_URL".into(), base);
+    assert_eq!(
+        provider::pages(&app, "/items", "items", "test", false)
+            .await
+            .unwrap(),
+        vec![json!(1), json!(2)]
+    );
+    let error = provider::pages(&app, "/denied", "items", "test", false)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("im:message.history:readonly"));
+    assert!(error.to_string().contains("reconnect Feishu"));
+    let error: larkai::Error = error.into();
+    assert_eq!(error.0, StatusCode::BAD_GATEWAY);
+    app.cfg.0.insert(
+        "FEISHU_SCOPES".into(),
+        "task:task:read offline_access".into(),
+    );
+    let scopes = app.cfg.feishu_scopes();
+    for scope in [
+        "task:task:read",
+        "im:message.history:readonly",
+        "contact:contact.base:readonly",
+        "base:field:read",
+    ] {
+        assert!(scopes.split_whitespace().any(|s| s == scope));
+    }
+    server.abort();
+}

@@ -10,6 +10,11 @@ export function SettingsPage({ revision, mutate, busy }: PageProps) {
         title="Settings"
         description="Manage notification delivery for your team."
       />
+      <section className="panel settings">
+        <h2>Feishu connection</h2>
+        <p>After enabling the app’s user permissions in Feishu, reconnect to approve access to message history, the organization directory, and table fields.</p>
+        <a className="button primary" href="/auth/feishu?next=/settings">Reconnect Feishu</a>
+      </section>
       <Load state={state}>
         {(s) => (
           <section className="panel settings">
