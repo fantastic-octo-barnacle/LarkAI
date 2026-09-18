@@ -1,6 +1,6 @@
 # RoboMaster Research Hub
 
-A Rust/Axum API and React/TypeScript frontend built with Vite. The hub collects Feishu tasks, Bitable records, chat messages and calendar events, and provides a dashboard, timeline, task board, workload view, member directory and email delivery log.
+A Rust/Axum API and React/TypeScript frontend built with Vite. The hub collects Feishu tasks, Bitable records and calendar events, and provides a dashboard, timeline, task board, workload view, member directory and email delivery log.
 
 This is a clean rewrite. It creates `data/larkai.sqlite3`; old Flask databases, sessions, routes and mock JSON files are not migrated. Sign in, connect Feishu, refresh members and sync to rebuild the workspace.
 
@@ -74,4 +74,6 @@ deploy/            Docker Compose and deployment helpers
 
 OIDC sign-in validates the provider ID token and checks UserInfo once to obtain the current role. Requests then validate that ID token locally against cached signing keys; tokens stay in the server-side session, behind an HttpOnly cookie. Discovery and JWKS caches last five minutes. Unknown keys trigger a refresh at most once per 30 seconds. Signature, issuer, audience, subject and expiry remain enforced. Sessions are capped at 15 minutes and the token expiry, so role changes and account disabling take effect at the next sign-in within that window. Existing sessions without an ID token must sign in again after upgrading.
 
-Feishu authorization always requests `im:message.history:readonly`, `contact:contact.base:readonly`, and `base:field:read` in addition to `FEISHU_SCOPES`. Enable these **user** permissions in the Feishu app console and publish/approve the app configuration if required by the tenant, then use **Settings → Reconnect Feishu** to grant them. Updating the scope configuration does not expand an existing token’s grants. Directory visibility is still limited to the app/user’s permitted organization range. Collection uses pages of 50 and follows cursors; it retains the previous source data on failure.
+Feishu authorization always requests `contact:contact.base:readonly` and `base:field:read` in addition to `FEISHU_SCOPES`. Enable these **user** permissions in the Feishu app console and publish/approve the app configuration if required by the tenant, then use **Settings → Reconnect Feishu** to grant them. Updating the scope configuration does not expand an existing token’s grants. Directory visibility is still limited to the app/user’s permitted organization range. Collection uses pages of 50 and follows cursors; it retains the previous source data on failure.
+
+Message collection is disabled. Sync does not fetch chat history, and authorization filters message scopes out of `FEISHU_SCOPES`. Chat membership lookup remains available for the member directory.

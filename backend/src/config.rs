@@ -83,13 +83,10 @@ impl Config {
                 "auth:user.id:read task:task:read offline_access",
             )
             .split_whitespace()
+            .filter(|scope| !scope.starts_with("im:message"))
             .map(str::to_owned)
             .collect();
-        for scope in [
-            "im:message.history:readonly",
-            "contact:contact.base:readonly",
-            "base:field:read",
-        ] {
+        for scope in ["contact:contact.base:readonly", "base:field:read"] {
             if !scopes.iter().any(|s| s == scope) {
                 scopes.push(scope.into());
             }

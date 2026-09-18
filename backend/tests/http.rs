@@ -405,7 +405,20 @@ async fn partial_sync_preserves_failed_source_data_and_reports_warnings() {
     .await
     .unwrap();
     let result = provider::sync(&app, "s").await.unwrap();
-    assert!(result["warnings"].as_array().unwrap().len() >= 3);
+    let warnings = result["warnings"].as_array().unwrap();
+    for source in ["tasks:", "calendar:"] {
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.as_str().unwrap().starts_with(source))
+        );
+    }
+    assert!(
+        !warnings
+            .iter()
+            .any(|w| w.as_str().unwrap().starts_with("messages:"))
+    );
+    assert!(result["sources"].get("messages").is_none());
     assert!(app.db.task(&cached.id).await.unwrap().is_some());
 }
 #[test]
@@ -528,12 +541,12 @@ async fn feishu_pagination_and_permission_errors() {
     assert_eq!(error.0, StatusCode::BAD_GATEWAY);
     app.cfg.0.insert(
         "FEISHU_SCOPES".into(),
-        "task:task:read offline_access".into(),
+        "task:task:read offline_access im:message.history:readonly im:message.group_msg:get_as_user".into(),
     );
     let scopes = app.cfg.feishu_scopes();
+    assert!(!scopes.contains("im:message"));
     for scope in [
         "task:task:read",
-        "im:message.history:readonly",
         "contact:contact.base:readonly",
         "base:field:read",
     ] {

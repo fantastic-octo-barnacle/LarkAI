@@ -605,45 +605,6 @@ fn important(s: &str) -> u8 {
         1
     }
 }
-async fn collect_messages(app: &App, token: &str) -> anyhow::Result<usize> {
-    let mut events = Vec::new();
-    for chat in chats(app, token).await? {
-        let cid = text(&chat["chat_id"]);
-        let name = text(&chat["name"]);
-        let q = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("container_id_type", "chat")
-            .append_pair("container_id", &cid)
-            .append_pair("sort_type", "ByCreateTimeAsc")
-            .finish();
-        for msg in pages(app, &format!("/im/v1/messages?{q}"), "items", token, false).await? {
-            let raw = text(&msg["body"]["content"]);
-            let parsed: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
-            let description = if msg["msg_type"] == "text" {
-                text(&parsed["text"])
-            } else {
-                raw
-            };
-            let e = Event {
-                id: format!("message:{}", text(&msg["message_id"])),
-                source: "message".into(),
-                title: format!(
-                    "[{name}] {}",
-                    description.chars().take(80).collect::<String>()
-                ),
-                importance: important(&description),
-                description,
-                ts: iso(&msg["create_time"], true),
-                author: text(&msg["sender"]["id"]),
-                url: String::new(),
-                tags: vec![name.clone()],
-            };
-            events.push((e.id.clone(), e));
-        }
-    }
-    let n = events.len();
-    app.db.replace("events", "message", &events).await?;
-    Ok(n)
-}
 async fn collect_calendar(app: &App, token: &str) -> anyhow::Result<usize> {
     let mut id = app.cfg.get("FEISHU_CALENDAR_ID").to_owned();
     if id.is_empty() {
@@ -704,7 +665,6 @@ pub async fn sync(app: &App, subject: &str) -> anyhow::Result<Value> {
         for (name, result) in [
             ("tasks", collect_tasks(app, &token).await),
             ("bitable", collect_bitable(app, &token).await),
-            ("messages", collect_messages(app, &token).await),
             ("calendar", collect_calendar(app, &token).await),
         ] {
             match result {
