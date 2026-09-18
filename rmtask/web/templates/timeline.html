@@ -11,10 +11,11 @@
     <option value="source" {% if group == 'source' %}selected{% endif %}>By source</option>
     <option value="none" {% if group == 'none' %}selected{% endif %}>Flat list</option>
   </select>
+  <label class="chk-row"><input type="checkbox" name="omit_overdue" value="1" {% if omit_overdue %}checked{% endif %}> Omit overdue<input type="hidden" name="omit_overdue" value="0"></label>
   <input type="search" name="q" placeholder="Search…" value="{{ q }}">
   <button class="btn" type="submit">Filter</button>
 </form>
-<p class="muted small">Group messages are hidden by default — tick <b>message</b> to include them.</p>
+<p class="muted small">Group messages are hidden by default — tick <b>message</b> to include them. Overdue events are omitted by default — untick <b>Omit overdue</b> to show them.</p>
 
 {% if group == 'day' and groups %}
   <div class="tl-axis">

@@ -53,7 +53,7 @@ python -m scripts.fetch_team_emails --limit 8      # cache member emails (needs 
 ## What the website shows
 
 - **Dashboard** (`/`): team/competition facts and milestones, live stats (pending / in progress / completed / overdue), next deadlines, latest important updates, upcoming events.
-- **Timeline** (`/timeline`): every task deadline, group message and meeting merged into one time-ordered feed, importance-ranked, filterable by source and keyword.
+- **Timeline** (`/timeline`): every task deadline, group message and meeting merged into one time-ordered feed, importance-ranked, filterable by source and keyword, with a default-on **Omit overdue** toggle.
 - **Task board** (`/tasks`): Feishu task-v2 tasks are interactive (create / complete / cancel / delete through the Feishu API); Bitable records are mirrored (status 待执行/执行中/已完成, priority, ddl and owners) and can be completed/cancelled once `base:record:update` is granted.
 - **Members**: the assignee picker is fed from the cached Feishu directory (org users + group members, including externals) — refresh via **⟳ Members** (admin) or `python -m scripts.fetch_members`.
 - **Workload** (`/workload`): per-individual workload derived from the task board — active / pending / done / urgent / overdue counts, next deadline, division, and the member's task list.

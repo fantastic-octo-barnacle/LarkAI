@@ -113,10 +113,22 @@ def timeline():
     q = request.args.get("q", "")
     group = request.args.get("group", "day")
     show = request.args.get("show", "task,meeting,bitable")
+    omit_overdue = request.args.get("omit_overdue", "1") != "0"
     sources = [s.strip() for s in show.split(",") if s.strip()]
     events = g.db.list_events(source="", search=q, limit=1000)
     if sources:
         events = [e for e in events if e.source in sources]
+    if omit_overdue:
+        now = datetime.now(timezone.utc)
+
+        def _ts_utc(ts: str) -> datetime | None:
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                return None
+
+        events = [e for e in events if not e.ts or ((t := _ts_utc(e.ts)) and t >= now)]
     rows = timeline_rows(events)
     groups = []
     if group == "day":
@@ -125,7 +137,7 @@ def timeline():
         groups = group_by_source(rows)
     return render_template(
         "timeline.html", events=rows, groups=groups, group=group,
-        q=q, show=sources, all_sources=TIMELINE_SOURCES,
+        q=q, show=sources, all_sources=TIMELINE_SOURCES, omit_overdue=omit_overdue,
     )
 
 

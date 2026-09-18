@@ -34,7 +34,7 @@ _MOCK_STATE = {
             "guid": "mock_task_001",
             "title": "Calibrate aiming pipeline",
             "description": "Calibrate gimbal compensation and tune the latency budget.",
-            "due": "2026-09-20T16:00:00+00:00",
+            "due": "2099-09-20T16:00:00+00:00",
             "priority": "URGENT",
             "status": "pending",
             "owner_open_id": "ou_vision",
@@ -47,7 +47,7 @@ _MOCK_STATE = {
             "guid": "mock_task_002",
             "title": "Collect telemetry",
             "description": "Collect telemetry over the new test strip and upload logs.",
-            "due": "2026-09-24T10:00:00+00:00",
+            "due": "2099-09-24T10:00:00+00:00",
             "priority": "HIGH",
             "status": "pending",
             "owner_open_id": "ou_mech",
@@ -60,7 +60,7 @@ _MOCK_STATE = {
             "guid": "mock_task_003",
             "title": "Clean dataset",
             "description": "Remove mislabeled samples and regenerate the split.",
-            "due": "2026-09-12T10:00:00+00:00",
+            "due": "2000-01-01T10:00:00+00:00",
             "priority": "NORMAL",
             "status": "completed",
             "owner_open_id": "ou_vision",
@@ -75,7 +75,7 @@ _MOCK_STATE = {
             "message_id": "om_mock_001",
             "chat_id": "oc_mock_group",
             "chat_name": "RM Research Sync",
-            "ts": "2026-09-14T09:05:00+00:00",
+            "ts": "2000-01-01T09:05:00+00:00",
             "author": "Demo Driver",
             "text": "Important: sync at 4pm today, bring latest test data.",
             "url": "",
@@ -85,7 +85,7 @@ _MOCK_STATE = {
             "message_id": "om_mock_002",
             "chat_id": "oc_mock_group",
             "chat_name": "RM Research Sync",
-            "ts": "2026-09-15T08:30:00+00:00",
+            "ts": "2000-01-01T08:30:00+00:00",
             "author": "Ops Manager",
             "text": "Confirmed attendance list of 12.",
             "url": "",
@@ -97,8 +97,8 @@ _MOCK_STATE = {
             "event_id": "ev_mock_001",
             "title": "Weekly sync review",
             "description": "Agenda: latency budget and lighting robustness.",
-            "start_iso": "2026-09-14T08:00:00+00:00",
-            "end_iso": "2026-09-14T09:00:00+00:00",
+            "start_iso": "2000-01-01T08:00:00+00:00",
+            "end_iso": "2000-01-01T09:00:00+00:00",
             "author": "Demo Driver",
             "url": "",
             "meeting_type": "weekly_sync",
@@ -235,12 +235,23 @@ class SmokeTest(unittest.TestCase):
     def test_timeline_show_filter(self) -> None:
         self.login()
         self.client.post("/sync")
-        resp = self.client.get("/timeline?show=task&group=day")
+        resp = self.client.get("/timeline?show=task&group=day&omit_overdue=0")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"tl-axis", resp.data)
         self.assertEqual(resp.data.count(b"src-message"), 0)
-        resp = self.client.get("/timeline?show=message,meeting,bitable&group=day")
+        resp = self.client.get("/timeline?show=message,meeting,bitable&group=day&omit_overdue=0")
         self.assertGreater(resp.data.count(b"src-message"), 0)
+
+    def test_timeline_omit_overdue_default(self) -> None:
+        self.login()
+        self.client.post("/sync")
+        resp = self.client.get("/timeline")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b'name="omit_overdue" value="1" checked', resp.data)
+        self.assertIn(b"Calibrate aiming pipeline", resp.data)
+        self.assertNotIn(b"Weekly sync review", resp.data)
+        resp_all = self.client.get("/timeline?omit_overdue=0")
+        self.assertIn(b"Weekly sync review", resp_all.data)
 
     def test_tasks_grouped_blocks(self) -> None:
         self.login()
