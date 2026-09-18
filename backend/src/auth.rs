@@ -14,7 +14,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
 use subtle::ConstantTimeEq;
 
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -88,9 +88,60 @@ async fn signed_claims(
     issuer: &str,
     audience: &str,
 ) -> anyhow::Result<Value> {
+    verify_token(
+        app,
+        token,
+        jwks_uri,
+        issuer,
+        audience,
+        &[jsonwebtoken::Algorithm::RS256],
+    )
+    .await
+}
+
+fn oidc_algorithms(metadata: &Value) -> Vec<jsonwebtoken::Algorithm> {
+    use jsonwebtoken::Algorithm;
+    metadata["id_token_signing_alg_values_supported"]
+        .as_array()
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|v| match v.as_str() {
+                    Some("RS256") => Some(Algorithm::RS256),
+                    Some("ES256") => Some(Algorithm::ES256),
+                    Some("EdDSA") => Some(Algorithm::EdDSA),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| vec![Algorithm::RS256])
+}
+
+fn access_token_hash(token: &str, algorithm: jsonwebtoken::Algorithm) -> String {
+    if algorithm == jsonwebtoken::Algorithm::EdDSA {
+        URL_SAFE_NO_PAD.encode(&Sha512::digest(token.as_bytes())[..32])
+    } else {
+        URL_SAFE_NO_PAD.encode(&Sha256::digest(token.as_bytes())[..16])
+    }
+}
+
+async fn verify_token(
+    app: &App,
+    token: &str,
+    jwks_uri: &str,
+    issuer: &str,
+    audience: &str,
+    algorithms: &[jsonwebtoken::Algorithm],
+) -> anyhow::Result<Value> {
     let head = jsonwebtoken::decode_header(token)?;
     anyhow::ensure!(
-        head.alg == jsonwebtoken::Algorithm::RS256,
+        algorithms.contains(&head.alg)
+            && matches!(
+                head.alg,
+                jsonwebtoken::Algorithm::RS256
+                    | jsonwebtoken::Algorithm::ES256
+                    | jsonwebtoken::Algorithm::EdDSA
+            ),
         "Unsupported signing algorithm"
     );
     let jwks: jsonwebtoken::jwk::JwkSet = app
@@ -108,7 +159,15 @@ async fn signed_claims(
                 .ok_or_else(|| anyhow::anyhow!("Missing key ID"))?,
         )
         .ok_or_else(|| anyhow::anyhow!("Unknown signing key"))?;
-    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::RS256);
+    if head.alg == jsonwebtoken::Algorithm::EdDSA {
+        anyhow::ensure!(
+            matches!(&key.algorithm,
+            jsonwebtoken::jwk::AlgorithmParameters::OctetKeyPair(params)
+                if params.curve == jsonwebtoken::jwk::EllipticCurve::Ed25519),
+            "Only Ed25519 is supported for EdDSA"
+        );
+    }
+    let mut validation = jsonwebtoken::Validation::new(head.alg);
     validation.set_audience(&[audience]);
     validation.set_issuer(&[issuer]);
     validation.set_required_spec_claims(&["exp", "iat", "sub", "iss", "aud"]);
@@ -397,12 +456,13 @@ pub async fn oidc_callback(
             .error_for_status()?
             .json()
             .await?;
-        let c = signed_claims(
+        let c = verify_token(
             &app,
             &text(&token["id_token"]),
             &text(&m["jwks_uri"]),
             app.cfg.get("OIDC_ISSUER").trim_end_matches('/'),
             app.cfg.get("OIDC_CLIENT_ID"),
+            &oidc_algorithms(&m),
         )
         .await?;
         anyhow::ensure!(equal(&s.nonce, &text(&c["nonce"])), "Nonce mismatch");
@@ -413,9 +473,12 @@ pub async fn oidc_callback(
             );
         }
         if let Some(hash) = c["at_hash"].as_str() {
-            let digest = Sha256::digest(text(&token["access_token"]).as_bytes());
+            let algorithm = jsonwebtoken::decode_header(&text(&token["id_token"]))?.alg;
             anyhow::ensure!(
-                equal(hash, &URL_SAFE_NO_PAD.encode(&digest[..16])),
+                equal(
+                    hash,
+                    &access_token_hash(&text(&token["access_token"]), algorithm)
+                ),
                 "Access token hash mismatch"
             );
         }
@@ -617,6 +680,53 @@ pub async fn login(
     }
 }
 
+/// Read-only deployment readiness check. Outputs public provider metadata only.
+pub async fn check_oidc(app: &App) -> anyhow::Result<Value> {
+    if !app.cfg.oidc() {
+        return Ok(json!({"oidc":"disabled"}));
+    }
+    let m = metadata(app).await?;
+    let algorithms = oidc_algorithms(&m);
+    anyhow::ensure!(
+        !algorithms.is_empty(),
+        "Identity provider has no supported signing algorithm"
+    );
+    let jwks: jsonwebtoken::jwk::JwkSet = app
+        .http
+        .get(text(&m["jwks_uri"]))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let usable = jwks
+        .keys
+        .iter()
+        .filter(|key| {
+            let algorithm = match &key.algorithm {
+                jsonwebtoken::jwk::AlgorithmParameters::RSA(_) => {
+                    Some(jsonwebtoken::Algorithm::RS256)
+                }
+                jsonwebtoken::jwk::AlgorithmParameters::EllipticCurve(p)
+                    if p.curve == jsonwebtoken::jwk::EllipticCurve::P256 =>
+                {
+                    Some(jsonwebtoken::Algorithm::ES256)
+                }
+                jsonwebtoken::jwk::AlgorithmParameters::OctetKeyPair(p)
+                    if p.curve == jsonwebtoken::jwk::EllipticCurve::Ed25519 =>
+                {
+                    Some(jsonwebtoken::Algorithm::EdDSA)
+                }
+                _ => None,
+            };
+            algorithm.is_some_and(|a| algorithms.contains(&a))
+                && jsonwebtoken::DecodingKey::from_jwk(key).is_ok()
+        })
+        .count();
+    anyhow::ensure!(usable > 0, "Identity provider has no usable signing keys");
+    Ok(json!({"issuer":m["issuer"],"algorithms":algorithms,"usable_signing_keys":usable}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,6 +801,121 @@ mod tests {
             signed_claims(&app, &hs, &uri, "https://issuer.test", "larkai")
                 .await
                 .is_err()
+        );
+        server.abort();
+    }
+}
+
+#[cfg(test)]
+mod provider_algorithm_tests {
+    use super::*;
+    use jsonwebtoken::{Algorithm, EncodingKey, Header};
+    use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, Ed25519KeyPair, KeyPair};
+
+    #[tokio::test]
+    async fn accepts_herkules_algorithms_only_when_advertised() {
+        let random = ring::rand::SystemRandom::new();
+        let ec_der =
+            EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &random).unwrap();
+        let ec =
+            EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, ec_der.as_ref(), &random)
+                .unwrap();
+        let ed_der = Ed25519KeyPair::generate_pkcs8(&random).unwrap();
+        let ed = Ed25519KeyPair::from_pkcs8(ed_der.as_ref()).unwrap();
+        let public = ec.public_key().as_ref();
+        let jwks = json!({"keys":[
+            {"kty":"EC","kid":"ec","use":"sig","alg":"ES256","crv":"P-256","x":URL_SAFE_NO_PAD.encode(&public[1..33]),"y":URL_SAFE_NO_PAD.encode(&public[33..65])},
+            {"kty":"OKP","kid":"ed","use":"sig","alg":"EdDSA","crv":"Ed25519","x":URL_SAFE_NO_PAD.encode(ed.public_key().as_ref())}
+        ]});
+        let router = axum::Router::new().route(
+            "/jwks",
+            axum::routing::get(move || async move { Json(jwks) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let uri = format!("http://{}/jwks", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let app = App::new(crate::config::Config(
+            [("DATABASE_PATH".into(), ":memory:".into())].into(),
+        ))
+        .await
+        .unwrap();
+        let advertised =
+            oidc_algorithms(&json!({"id_token_signing_alg_values_supported":["ES256","EdDSA"]}));
+        assert_eq!(advertised, vec![Algorithm::ES256, Algorithm::EdDSA]);
+        let now = chrono::Utc::now().timestamp();
+        let claims = json!({"sub":"user","iss":"https://issuer.test","aud":"larkai","iat":now,"exp":now+300});
+        for (algorithm, kid, key) in [
+            (
+                Algorithm::ES256,
+                "ec",
+                EncodingKey::from_ec_der(ec_der.as_ref()),
+            ),
+            (
+                Algorithm::EdDSA,
+                "ed",
+                EncodingKey::from_ed_der(ed_der.as_ref()),
+            ),
+        ] {
+            let mut header = Header::new(algorithm);
+            header.kid = Some(kid.into());
+            let token = jsonwebtoken::encode(&header, &claims, &key).unwrap();
+            assert!(
+                verify_token(
+                    &app,
+                    &token,
+                    &uri,
+                    "https://issuer.test",
+                    "larkai",
+                    &advertised
+                )
+                .await
+                .is_ok()
+            );
+            assert!(
+                verify_token(
+                    &app,
+                    &token,
+                    &uri,
+                    "https://issuer.test",
+                    "wrong-client",
+                    &advertised
+                )
+                .await
+                .is_err()
+            );
+            assert!(
+                verify_token(
+                    &app,
+                    &token,
+                    &uri,
+                    "https://issuer.test",
+                    "larkai",
+                    &[Algorithm::RS256]
+                )
+                .await
+                .is_err()
+            );
+            // Cloudflare Access remains pinned to RS256 independently of OIDC.
+            assert!(
+                signed_claims(&app, &token, &uri, "https://issuer.test", "larkai")
+                    .await
+                    .is_err()
+            );
+        }
+        assert!(
+            oidc_algorithms(&json!({"id_token_signing_alg_values_supported":["HS256","none"]}))
+                .is_empty()
+        );
+        // Published vectors: https://openid.net/specs/openid-connect-token-hash-algorithms-1_0.html#section-3
+        let access =
+            "YmJiZTAwYmYtMzgyOC00NzhkLTkyOTItNjJjNDM3MGYzOWIy9sFhvH8K_x8UIHj1osisS57f5DduL";
+        assert_eq!(
+            access_token_hash(access, Algorithm::ES256),
+            "xsZZrUssMXjL3FBlzoSh2g"
+        );
+        assert_eq!(
+            access_token_hash(access, Algorithm::EdDSA),
+            "p2LHG4H-8pYDc0hyVOo3iIHvZJUqe9tbj3jESOuXbkY"
         );
         server.abort();
     }

@@ -22,7 +22,7 @@ FEISHU_REDIRECT_URI=https://dashboard.example.com/oauth/callback
 RM_AUTO_COLLECT_SECONDS=300
 ```
 
-Register `PUBLIC_ORIGIN/oidc/callback` with Herkules and `FEISHU_REDIRECT_URI` with Feishu. Herkules must expose OIDC discovery, RS256 signed ID tokens and UserInfo with `sub` and `role` (`admin` or `member`). Serve through HTTPS. The public origin is the browser-visible origin and must have no path. Session IDs are random and stored in SQLite; no Flask signing secret is used.
+Register `PUBLIC_ORIGIN/oidc/callback` with Herkules and `FEISHU_REDIRECT_URI` with Feishu. Herkules must expose OIDC discovery, RS256, ES256 or EdDSA signed ID tokens and UserInfo with `sub` and `role` (`admin` or `member`). Serve through HTTPS. The public origin is the browser-visible origin and must have no path. Session IDs are random and stored in SQLite; no Flask signing secret is used.
 
 Optional Cloudflare Access origin verification uses `CF_ACCESS_ISSUER` (the HTTPS `*.cloudflareaccess.com` team origin) and `CF_ACCESS_AUD`. The origin verifies the signed assertion rather than trusting identity headers. This is independent of a Cloudflare Worker; the frontend currently uses standard Vite hosting only.
 
@@ -39,7 +39,7 @@ The rewrite starts a fresh `larkai.sqlite3`. Existing `rmtask.db` and Flask sess
 
 ## Existing GitHub/VPS flow
 
-`.github/workflows/deploy.yml` runs Rust formatting/lints/tests, frontend build/unit/browser tests and deployment-helper tests, then publishes an immutable GHCR image. The deployment job stages the existing Compose and environment helpers over SSH, starts the new image, and checks the Herkules redirect. `deploy/compose.yml` connects to the external `herkules_default` network with the `larkai` alias. No host port is published there.
+`.github/workflows/deploy.yml` runs Rust formatting/lints/tests, frontend build/unit/browser tests and deployment-helper tests, then publishes an immutable GHCR image. The deployment job stages the existing Compose and environment helpers over SSH, starts the new image, validates OIDC discovery and signing-key compatibility with `larkai check-auth`, and checks the public authentication redirect. `deploy/compose.yml` connects to the external `herkules_default` network with the `larkai` alias. No host port is published there.
 
 `deploy/apply.sh` backs up the Rust SQLite database when present and rolls back image/configuration if container startup fails. First migration from the Python image does not import old data. The deployment helper initializes the data directory ownership for the unprivileged Rust container. Schema changes should remain compatible with the immediately previous Rust release if automatic rollback is needed.
 

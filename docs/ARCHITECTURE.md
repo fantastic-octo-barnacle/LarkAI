@@ -5,7 +5,7 @@ The browser runs a React/TypeScript SPA built by Vite. In development, Vite prox
 ## Backend
 
 - `config.rs`: environment loading and startup validation.
-- `auth.rs`: opaque server-side sessions, CSRF, Herkules OIDC authorization code flow with PKCE/state/nonce, RS256 signature/issuer/audience validation, optional Cloudflare Access validation, Feishu login/linking.
+- `auth.rs`: opaque server-side sessions, CSRF, Herkules OIDC authorization code flow with PKCE/state/nonce, discovery-advertised RS256/ES256/EdDSA signature validation plus issuer/audience checks, optional Cloudflare Access validation, Feishu login/linking.
 - `provider.rs`: Feishu OAuth refresh, paginated collection, normalization, task-v2 and Bitable mutations, directory refresh.
 - `model.rs`: stable typed domain objects and statistics. Tasks hold a list of owners, divisions, remote ID, source and source table ID.
 - `store.rs`: asynchronous SQLx/SQLite persistence and transactional source replacement.

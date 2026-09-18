@@ -71,4 +71,7 @@ if ! compose image.env compose.yml up -d --wait --wait-timeout 120; then
   echo 'LarkAI startup failed; restoring the previous image and configuration' >&2
   exit 1
 fi
+# Verify discovery and supported signing keys using the actual deployed binary.
+# Failure triggers the same image/config rollback as an unhealthy container.
+compose image.env compose.yml exec -T web larkai check-auth
 compose image.env compose.yml ps

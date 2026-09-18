@@ -8,6 +8,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     let app = App::new(Config::load()?).await?;
+    if std::env::args().any(|s| s == "check-auth") {
+        println!("{}", larkai::auth::check_oidc(&app).await?);
+        return Ok(());
+    }
     let interval = app.cfg.number("RM_AUTO_COLLECT_SECONDS", 0);
     if std::env::args().any(|s| s == "collect") {
         let subject = sqlx::query_scalar::<_, String>(
