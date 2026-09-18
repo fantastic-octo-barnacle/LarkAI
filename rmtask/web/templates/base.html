@@ -18,16 +18,20 @@
         <a href="{{ url_for('main.notifications') }}">Notifications</a>
         <a href="{{ url_for('main.settings_page') }}">Settings</a>
         {% if is_admin %}<a href="{{ url_for('main.diagnostics') }}">Diagnostics</a>{% endif %}
-        {% if is_admin %}<form class="inline" method="post" action="{{ url_for('main.sync') }}"><button class="btn ghost" type="submit">⟳ Sync</button></form>{% endif %}
+        {% if is_admin %}<form class="inline" method="post" action="{{ url_for('main.sync') }}">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<button class="btn ghost" type="submit">⟳ Sync</button></form>{% endif %}
+        {% if identity %}
+          <span class="user-chip">{{ identity.name or identity.email }}</span>
+          <form class="inline" method="post" action="/oidc/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn ghost">Sign out</button></form>
+        {% endif %}
         {% if access_identity %}
           <span class="user-chip">{{ access_identity.email }}</span>
           <a href="/cdn-cgi/access/logout">Sign out</a>
         {% endif %}
         {% if current_user %}
           <span class="user-chip">{{ current_user.name }}</span>
-          <a href="{{ url_for('main.logout') }}">Logout</a>
+          {% if not oidc_enabled %}<a href="{{ url_for('main.logout') }}">Logout</a>{% endif %}
         {% elif settings.mode == "mock" or settings.app_id %}
-          <a class="btn primary" href="{{ url_for('main.login') }}">{{ "Connect Feishu" if access_identity else "Login" }}</a>
+          <a class="btn primary" href="{{ url_for('main.login') }}">{{ "Connect Feishu" if access_identity or oidc_enabled else "Login" }}</a>
         {% endif %}
       </nav>
     </div>
@@ -40,7 +44,7 @@
   </div>
   {% endif %}
   <main class="wrap">
-    {% if access_identity and not settings.app_id %}
+    {% if (access_identity or oidc_enabled) and not settings.app_id %}
       <div class="flash">Feishu is not connected yet. Live tasks will appear after the connection is configured.</div>
     {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}

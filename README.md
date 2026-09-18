@@ -99,7 +99,8 @@ docs/                  setup, collection, interactive, email, deployment docs
 ## Repository
 
 - GitHub: <https://github.com/fantastic-octo-barnacle/LarkAI> (branch `main`, SSH remote)
-- Static mirror: `https://fantastic-octo-barnacle.github.io/LarkAI/` once GitHub Pages is enabled
+- Production: `https://dashboard.herkules.dev/` (Herkules OIDC; Feishu is connected separately).
+- The deploy workflow runs tests and deploys independently. Separate CI and Pages workflows are disabled.
 
 ## Tests
 

@@ -63,8 +63,8 @@ Mount a volume at `/app/data` so `rmtask.db` and mock state survive restarts. Se
 
 ### CI and static Pages
 
-- `.github/workflows/ci.yml`: on every push/PR - installs deps, runs the full test suite, and smoke-tests the static export.
-- `.github/workflows/pages.yml`: on push to `main` it exports the mock-mode snapshot to `site/` and deploys it to GitHub Pages (Settings → Pages → Source: GitHub Actions).
+The standalone CI and Pages workflows were removed. `deploy.yml` runs the full
+test suite before publishing and deploying the app. No Pages site is published.
 
 
 ### A2. PaaS (Render / Railway / Fly.io)
@@ -173,3 +173,32 @@ individual secrets named `FEISHU_APP_ID`, `FEISHU_APP_SECRET`,
 `FEISHU_ADMIN_OPEN_IDS`, and `FEISHU_SCOPES`. Non-empty individual secrets
 override the corresponding values in `LARKAI_ENV`; unspecified values on the
 server are preserved. Run Deploy LarkAI after changing secrets.
+
+
+## Herkules OpenID Connect
+
+Production uses the confidential `larkai` client at `https://herkules.dev/auth`.
+`OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` and `PUBLIC_ORIGIN` are
+required by production Compose and can be set as individual GitHub environment
+secrets. The exact callback is `https://dashboard.herkules.dev/oidc/callback`.
+Authlib handles discovery, authorization code + S256 PKCE, state, nonce, and
+signed ID token verification. Tokens are held in private server-side sessions
+under `/app/data/sessions`; the browser gets a Secure, HttpOnly, host-only cookie.
+Session expiry requires another code exchange (normally using the existing
+Herkules login), rather than storing long-lived refresh tokens.
+
+Each authenticated request fetches UserInfo and verifies its subject and role.
+Only `role=admin` from Herkules authorizes sync, diagnostics, deletion and settings;
+`FEISHU_ADMIN_OPEN_IDS` and local Feishu admin flags do not grant production roles.
+Provider failure returns 503, disabled/invalid accounts are signed out, and role
+changes take effect on the next request. Forms use session-bound CSRF tokens.
+
+**Connect Feishu** is separate from website login. `/oauth/callback` stores the
+Feishu connection against the authenticated Herkules `sub`. A Feishu account
+cannot be linked to two Herkules accounts; names/emails never link identities.
+No manual Open ID list or directory lookup permission is needed. The original
+Feishu callback URI still needs to be allowlisted in the Feishu app.
+
+The Cloudflare Access application is retired only after OIDC is deployed and
+origin probes verify unauthenticated redirects/API denials. Cloudflare DNS/proxy
+stays enabled. `/healthz` returns only `{"ok":true}` without authentication.

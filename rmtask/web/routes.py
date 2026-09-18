@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import sqlite3
 from datetime import datetime, timezone
 
-from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 
 from rmtask.api import AuthManager
 from rmtask.collector.pipeline import collect_all
@@ -59,6 +60,8 @@ def _current_user() -> UserRecord | None:
 
 
 def _is_admin(user: UserRecord | None) -> bool:
+    if current_app.config.get("OIDC_ENABLED"):
+        return g.get("identity", {}).get("role") == "admin"
     if not user:
         return False
     if user.is_admin:
@@ -344,7 +347,8 @@ def login():
 def oauth_callback():
     code = request.args.get("code", "")
     state = request.args.get("state", "")
-    if session.get("oauth_state") != state:
+    expected_state = session.pop("oauth_state", None)
+    if not expected_state or not state or not secrets.compare_digest(expected_state, state):
         return "state mismatch", 400
     if not code:
         return "authorization failed: no code", 400
@@ -356,16 +360,23 @@ def oauth_callback():
         return f"OAuth failed: {exc}", 400
     data = info.get("data", info)
     open_id = data.get("open_id") or data.get("user_id") or ""
+    if not open_id:
+        return "Feishu did not return an Open ID", 400
+    if current_app.config.get("OIDC_ENABLED"):
+        try:
+            g.db.link_feishu(g.identity["sub"], open_id)
+        except sqlite3.IntegrityError:
+            return "This Feishu account is already connected to another account", 409
     existing = g.db.get_user(open_id)
     is_admin = open_id in g.settings.admin_open_ids
-    if not g.settings.admin_open_ids and not any(u.is_admin for u in g.db.list_users()):
+    if not current_app.config.get("OIDC_ENABLED") and not g.settings.admin_open_ids and not any(u.is_admin for u in g.db.list_users()):
         is_admin = True  # first user to log in becomes admin until FEISHU_ADMIN_OPEN_IDS is set
     user = UserRecord(
         open_id=open_id,
         name=data.get("name", open_id),
         email=data.get("email", ""),
         avatar_url=data.get("avatar_url", ""),
-        is_admin=is_admin,
+        is_admin=False if current_app.config.get("OIDC_ENABLED") else is_admin,
     )
     g.db.upsert_user(user)
     now = int(datetime.now(timezone.utc).timestamp())

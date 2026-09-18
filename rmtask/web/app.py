@@ -58,6 +58,12 @@ def create_app(settings: Settings | None = None) -> Flask:
     from rmtask.web.access import configure_access
 
     configure_access(app)
+    from rmtask.web.oidc import configure_oidc
+    configure_oidc(app, cfg)
+
+    @app.get("/healthz")
+    def healthz():
+        return {"ok": True}
 
     from rmtask.web.routes import bp
 

@@ -10,6 +10,11 @@ from pathlib import Path
 from rmtask.storage.models import EventRecord, TaskRecord, TokenRecord, UserRecord
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS identity_links (
+    subject TEXT PRIMARY KEY,
+    open_id TEXT NOT NULL UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS users (
     open_id TEXT PRIMARY KEY,
     name TEXT NOT NULL DEFAULT '',
@@ -111,6 +116,17 @@ class DB:
                     "DROP TABLE IF EXISTS notifications; DROP TABLE IF EXISTS settings;"
                 )
             conn.executescript(SCHEMA)
+
+    def linked_feishu_id(self, subject: str) -> str:
+        with self.connect() as conn:
+            row = conn.execute("SELECT open_id FROM identity_links WHERE subject=?", (subject,)).fetchone()
+        return row["open_id"] if row else ""
+
+    def link_feishu(self, subject: str, open_id: str) -> None:
+        # UNIQUE prevents silently stealing another Herkules account's connection.
+        with self.connect() as conn:
+            conn.execute("INSERT INTO identity_links(subject,open_id) VALUES(?,?) "
+                         "ON CONFLICT(subject) DO UPDATE SET open_id=excluded.open_id", (subject, open_id))
 
     # -- users ---------------------------------------------------------------
     def upsert_user(self, user: UserRecord) -> None:
