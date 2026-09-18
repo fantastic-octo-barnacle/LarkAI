@@ -37,7 +37,7 @@ finish() {
 }
 trap finish EXIT
 if [ -s incoming/runtime.env ]; then
-  cp incoming/runtime.env .env.new
+  python3 merge_env.py .env incoming/runtime.env .env.new
   chmod 600 .env.new
   mv .env.new .env
   env_changed=true

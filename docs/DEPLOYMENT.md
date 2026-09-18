@@ -124,9 +124,12 @@ and do not automatically become app administrators.
 
 GitHub environment **production** holds `DEPLOY_HOST`, `DEPLOY_USER`,
 `DEPLOY_SSH_KEY`, and `DEPLOY_KNOWN_HOSTS`. Optional secret **LARKAI_ENV** contains
-an entire dotenv file; if absent, deploys retain the server-owned `~/larkai/.env`.
-Never commit that file or credentials. Populate it with the real values from
-`.env.example`, plus:
+dotenv settings to merge into the server-owned `~/larkai/.env`. Unspecified keys
+are preserved; an explicit `KEY=` clears a value. If absent, deploys retain that file.
+Never commit that file or credentials. Populate the secret with the real Feishu
+values from `.env.example`. Cloudflare and Flask settings are already provisioned
+on the server and do not need to be copied into this secret. The complete server
+configuration includes:
 
 ```dotenv
 FEISHU_MODE=live
