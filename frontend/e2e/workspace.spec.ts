@@ -71,3 +71,25 @@ test("mock workspace supports login, task lifecycle, workload and notifications"
   });
   expect(errors).toEqual([]);
 });
+
+test("startup bundles session and page data without loading unopened task form options", async ({
+  page,
+}) => {
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname.startsWith("/api/"))
+      requests.push(new URL(r.url()).pathname);
+  });
+  await page.goto("/auth/feishu?next=/tasks");
+  await expect(page.getByRole("button", { name: "New task" })).toBeVisible();
+  await expect(
+    page.getByText("No tasks match.", { exact: false }),
+  ).toBeVisible();
+  expect(requests).toEqual(["/api/bootstrap"]);
+  requests.length = 0;
+  await page.reload();
+  await expect(
+    page.getByText("No tasks match.", { exact: false }),
+  ).toBeVisible();
+  expect(requests).toEqual(["/api/bootstrap"]);
+});

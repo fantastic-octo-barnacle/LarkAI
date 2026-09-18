@@ -42,3 +42,11 @@ Login entry points are `/auth/login` and `/auth/feishu`; callbacks are `/oidc/ca
 Shared data pages remain readable without a personal Feishu connection. Task actions require a connection; administrative routes additionally require an admin role. In local deployments without OIDC, shared data pages are public, matching the development workflow. Use OIDC to protect a live deployment.
 
 Collection and task mutations share an in-process lock; refresh tokens have a separate lock. Run one replica per database. A failed collection source retains its last successful data. Bitable/messages/calendar snapshots replace their source atomically only after all pages succeed. Task-v2 collection upserts because each user sees a different `my_tasks` subset; explicit deletes remove local tasks after upstream success.
+
+## Request timing and startup
+
+Every response includes `Server-Timing` (milliseconds) and a generated `X-Request-ID`. The same ID, route template, method, status and timings are logged as `HTTP request completed`; query strings, credentials and request bodies are not logged by this instrumentation. `total` measures server work until response headers are ready, excluding body streaming and client/network latency. `auth` and `handler` are the major phases. `db` measures instrumented database operations including pool waits and decoding; `upstream` measures Feishu requests/token exchange and discovery/JWKS cache misses. These submetrics overlap their parent phases and must not be added to `total`. This is wall-clock request instrumentation, not CPU sampling.
+
+`GET /api/bootstrap?page=/tasks` returns session details and the first page's data in one response. It runs the same handlers and permission checks as the individual APIs; a page error is returned separately from the session. React consumes the initial page result once, then uses normal fresh requests for navigation and mutations. Task form options and members load only when opening the form.
+
+Existing files under Vite's `/assets/` directory use `Cache-Control: private, max-age=31536000, immutable` and do not renew the session cookie. Vite content hashes change asset URLs after edits. Missing assets return 404 rather than the SPA document. HTML, APIs and errors remain `no-store`; shared/CDN caching is not enabled for authenticated responses.

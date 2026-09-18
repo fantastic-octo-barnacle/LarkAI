@@ -36,6 +36,7 @@ impl Store {
         self.list("SELECT data FROM members ORDER BY id").await
     }
     async fn list<T: DeserializeOwned>(&self, query: &str) -> anyhow::Result<Vec<T>> {
+        let _timer = crate::timing::Timer::start("db");
         sqlx::query_scalar::<_, String>(query)
             .fetch_all(&self.0)
             .await?
@@ -44,6 +45,7 @@ impl Store {
             .collect()
     }
     pub async fn task(&self, id: &str) -> anyhow::Result<Option<Task>> {
+        let _timer = crate::timing::Timer::start("db");
         sqlx::query_scalar::<_, String>("SELECT data FROM tasks WHERE id=?")
             .bind(id)
             .fetch_optional(&self.0)
@@ -52,10 +54,12 @@ impl Store {
             .transpose()
     }
     pub async fn put_task(&self, t: &Task) -> anyhow::Result<()> {
+        let _timer = crate::timing::Timer::start("db");
         sqlx::query("INSERT INTO tasks(id,source,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,source=excluded.source").bind(&t.id).bind(&t.source).bind(serde_json::to_string(t)?).execute(&self.0).await?;
         Ok(())
     }
     pub async fn put_member(&self, m: &Member) -> anyhow::Result<()> {
+        let _timer = crate::timing::Timer::start("db");
         sqlx::query("INSERT INTO members(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").bind(&m.id).bind(serde_json::to_string(m)?).execute(&self.0).await?;
         Ok(())
     }
@@ -66,6 +70,7 @@ impl Store {
         source: &str,
         items: &[(String, T)],
     ) -> anyhow::Result<()> {
+        let _timer = crate::timing::Timer::start("db");
         anyhow::ensure!(["tasks", "events"].contains(&table), "Invalid cache table");
         let mut tx = self.0.begin().await?;
         sqlx::query(&format!("DELETE FROM {table} WHERE source=?"))
@@ -86,6 +91,7 @@ impl Store {
         Ok(())
     }
     pub async fn setting(&self, key: &str) -> anyhow::Result<String> {
+        let _timer = crate::timing::Timer::start("db");
         Ok(sqlx::query_scalar("SELECT value FROM settings WHERE key=?")
             .bind(key)
             .fetch_optional(&self.0)
@@ -93,6 +99,7 @@ impl Store {
             .unwrap_or_default())
     }
     pub async fn set(&self, key: &str, value: &str) -> anyhow::Result<()> {
+        let _timer = crate::timing::Timer::start("db");
         sqlx::query("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(key).bind(value).execute(&self.0).await?;
         Ok(())
     }

@@ -6,6 +6,13 @@ export class ApiError extends Error {
     super(message);
   }
 }
+type InitialResult = { data?: unknown; error?: string; status?: number };
+const initialData = new Map<string, InitialResult>();
+export function primeInitialData(data: Record<string, InitialResult>) {
+  initialData.clear();
+  for (const [path, result] of Object.entries(data))
+    initialData.set(path, result);
+}
 let csrf = "";
 export function setCsrf(token: string) {
   csrf = token;
@@ -14,6 +21,17 @@ export async function api<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
+  if (!options.method || options.method === "GET") {
+    const initial = initialData.get(path);
+    if (initial) {
+      initialData.delete(path);
+      if (initial.error)
+        throw new ApiError(initial.status || 500, initial.error);
+      return initial.data as T;
+    }
+  } else {
+    initialData.clear();
+  }
   const response = await fetch(`/api${path}`, {
     ...options,
     headers: {

@@ -57,6 +57,7 @@ fn equal(a: &str, b: &str) -> bool {
     !a.is_empty() && bool::from(a.as_bytes().ct_eq(b.as_bytes()))
 }
 pub async fn save(app: &App, s: &Session) -> anyhow::Result<()> {
+    let _timer = crate::timing::Timer::start("db");
     sqlx::query("INSERT INTO sessions(id,data,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,expires_at=excluded.expires_at").bind(&s.id).bind(serde_json::to_string(s)?).bind(chrono::Utc::now().timestamp()+28800).execute(&app.db.0).await?;
     Ok(())
 }
@@ -229,19 +230,35 @@ async fn userinfo(app: &App, token: &str, subject: &str) -> anyhow::Result<Value
     Ok(profile)
 }
 pub async fn guard(State(app): State<App>, mut req: Request, next: Next) -> Response {
-    match guard_inner(&app, &mut req).await {
+    match crate::timing::measure("auth", guard_inner(&app, &mut req)).await {
         Ok(Some(r)) => r,
         Ok(None) => {
+            let asset = req.uri().path().starts_with("/assets/")
+                && matches!(
+                    *req.method(),
+                    axum::http::Method::GET | axum::http::Method::HEAD
+                );
             let session = req.extensions().get::<Session>().cloned();
-            let mut r = next.run(req).await;
-            if !r.headers().contains_key(header::SET_COOKIE)
+            let mut r = crate::timing::measure("handler", next.run(req)).await;
+            if !asset
+                && !r.headers().contains_key(header::SET_COOKIE)
                 && let Some(s) = session
             {
                 r.headers_mut()
                     .insert(header::SET_COOKIE, cookie(&app, &s.id).parse().unwrap());
             }
-            r.headers_mut()
-                .insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
+            let cacheable =
+                asset && (r.status().is_success() || r.status() == StatusCode::NOT_MODIFIED);
+            r.headers_mut().insert(
+                header::CACHE_CONTROL,
+                if cacheable {
+                    "private, max-age=31536000, immutable"
+                } else {
+                    "no-store"
+                }
+                .parse()
+                .unwrap(),
+            );
             r.headers_mut()
                 .insert("X-Content-Type-Options", "nosniff".parse().unwrap());
             r.headers_mut()
@@ -296,12 +313,14 @@ async fn guard_inner(app: &App, req: &mut Request) -> Result<Option<Response>> {
             (k == app.cfg.cookie()).then_some(v)
         })
         .unwrap_or("");
+    let db_timer = crate::timing::Timer::start("db");
     let data =
         sqlx::query_scalar::<_, String>("SELECT data FROM sessions WHERE id=? AND expires_at>?")
             .bind(supplied)
             .bind(chrono::Utc::now().timestamp())
             .fetch_optional(&app.db.0)
             .await?;
+    drop(db_timer);
     let mut s = if let Some(data) = data {
         let mut s: Session = serde_json::from_str(&data).map_err(anyhow::Error::from)?;
         s.id = supplied.to_owned();

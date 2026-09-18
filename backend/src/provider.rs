@@ -33,6 +33,7 @@ pub async fn call(
     if let Some(body) = body {
         req = req.json(&body);
     }
+    let _timer = crate::timing::Timer::start("upstream");
     let response = req.send().await?;
     let status = response.status();
     let v: Value = response.json().await?;
@@ -100,6 +101,7 @@ pub async fn pages(
     Ok(all)
 }
 pub async fn exchange(app: &App, grant: &str, code: &str) -> anyhow::Result<Value> {
+    let _timer = crate::timing::Timer::start("upstream");
     let mut data = vec![
         ("grant_type", grant),
         ("client_id", app.cfg.get("FEISHU_APP_ID")),
@@ -162,11 +164,13 @@ pub async fn open_id(app: &App, subject: &str) -> anyhow::Result<String> {
 }
 pub async fn user_token(app: &App, subject: &str) -> anyhow::Result<String> {
     let _lock = app.token_lock.lock().await;
+    let db_timer = crate::timing::Timer::start("db");
     let raw: String = sqlx::query_scalar("SELECT data FROM connections WHERE subject=?")
         .bind(subject)
         .fetch_one(&app.db.0)
         .await?;
     let mut v: Value = serde_json::from_str(&raw)?;
+    drop(db_timer);
     if v["expires_at"].as_i64().unwrap_or(0) < chrono::Utc::now().timestamp() + 60 {
         let refresh = text(&v["refresh_token"]);
         anyhow::ensure!(!refresh.is_empty(), "Reconnect Feishu");

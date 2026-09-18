@@ -554,3 +554,78 @@ async fn feishu_pagination_and_permission_errors() {
     }
     server.abort();
 }
+
+#[tokio::test]
+async fn bootstrap_keeps_page_authorization_and_exposes_timings() {
+    let app = app().await;
+    let router = web::router(app.clone());
+    let (status, headers, body) =
+        request(&router, "GET", "/api/bootstrap?page=/tasks", "", "", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["data"]["/tasks?q=&status="]["status"], 401);
+    assert_eq!(headers["cache-control"], "no-store");
+    let timing = headers["server-timing"].to_str().unwrap();
+    for name in ["auth;dur=", "handler;dur=", "total;dur=", "db;dur="] {
+        assert!(timing.contains(name));
+    }
+    uuid::Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).unwrap();
+    let (cookie, _) = login(&router).await;
+    let (_, _, body) = request(
+        &router,
+        "GET",
+        "/api/bootstrap?page=/tasks",
+        &cookie,
+        "",
+        None,
+    )
+    .await;
+    assert!(body["data"]["/tasks?q=&status="]["data"].is_array());
+    let session = Session {
+        id: "member-bootstrap".into(),
+        subject: "member".into(),
+        role: "member".into(),
+        ..Default::default()
+    };
+    save(&app, &session).await.unwrap();
+    let (_, _, body) = request(
+        &router,
+        "GET",
+        "/api/bootstrap?page=/settings",
+        "larkai=member-bootstrap",
+        "",
+        None,
+    )
+    .await;
+    assert_eq!(body["data"]["/settings"]["status"], 403);
+}
+
+#[tokio::test]
+async fn only_existing_assets_receive_immutable_private_caching() {
+    let dir = std::env::temp_dir().join(format!("larkai-assets-{}", uuid::Uuid::new_v4()));
+    tokio::fs::create_dir_all(dir.join("assets")).await.unwrap();
+    tokio::fs::write(dir.join("assets/test-12345678.js"), "export default 1")
+        .await
+        .unwrap();
+    tokio::fs::write(dir.join("index.html"), "<html>test</html>")
+        .await
+        .unwrap();
+    let mut app = app().await;
+    app.cfg
+        .0
+        .insert("FRONTEND_DIST".into(), dir.to_str().unwrap().into());
+    let router = web::router(app);
+    let (status, headers, _) =
+        request(&router, "GET", "/assets/test-12345678.js", "", "", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers["cache-control"],
+        "private, max-age=31536000, immutable"
+    );
+    assert!(!headers.contains_key("set-cookie"));
+    let (status, headers, _) = request(&router, "GET", "/assets/missing.js", "", "", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(headers["cache-control"], "no-store");
+    let (_, headers, _) = request(&router, "GET", "/tasks", "", "", None).await;
+    assert_eq!(headers["cache-control"], "no-store");
+    tokio::fs::remove_dir_all(dir).await.unwrap();
+}

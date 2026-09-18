@@ -31,6 +31,7 @@ impl Cache {
                 return Ok(value.clone());
             }
         }
+        let _timer = crate::timing::Timer::start("upstream");
         let value: Value = http
             .get(url)
             .send()

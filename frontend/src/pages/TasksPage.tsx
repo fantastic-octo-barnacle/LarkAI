@@ -15,9 +15,12 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
     `/tasks?${new URLSearchParams({ q, status })}`,
     revision,
   );
-  const members = useData<Member[]>("/members", revision);
+  const members = useData<Member[]>(
+    creating ? "/members" : undefined,
+    revision,
+  );
   const options = useData<{ categories: string[]; divisions: string[] }>(
-    "/task-options",
+    creating ? "/task-options" : undefined,
     revision,
   );
   const [confirm, setConfirm] = useState<string>();

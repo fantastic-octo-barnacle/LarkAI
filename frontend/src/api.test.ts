@@ -36,3 +36,19 @@ it("never allows executable links from remote content", () => {
   expect(safeUrl("data:text/html,test")).toBeUndefined();
   expect(safeUrl("https://feishu.cn/task/1")).toBe("https://feishu.cn/task/1");
 });
+it("consumes bootstrap data once and then fetches fresh data", async () => {
+  const { primeInitialData } = await import("./api");
+  const fetcher = vi.fn().mockResolvedValue(new Response('{"fresh":true}'));
+  vi.stubGlobal("fetch", fetcher);
+  primeInitialData({ "/dashboard": { data: { initial: true } } });
+  expect(await api("/dashboard")).toEqual({ initial: true });
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(await api("/dashboard")).toEqual({ fresh: true });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  primeInitialData({
+    "/tasks": { error: "feishu_connection_required", status: 428 },
+  });
+  await expect(api("/tasks")).rejects.toEqual(
+    new ApiError(428, "feishu_connection_required"),
+  );
+});

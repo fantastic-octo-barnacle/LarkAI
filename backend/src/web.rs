@@ -20,6 +20,7 @@ use tower_http::{
 
 pub fn router(app: App) -> Router {
     let dist = app.cfg.value("FRONTEND_DIST", "frontend/dist");
+    let assets = ServeDir::new(format!("{dist}/assets"));
     let files = ServeDir::new(dist).fallback(ServeFile::new(format!("{dist}/index.html")));
     Router::new()
         .route("/healthz", get(|| async { Json(json!({"ok":true})) }))
@@ -29,6 +30,8 @@ pub fn router(app: App) -> Router {
         .route("/auth/feishu", get(auth::feishu_login))
         .route("/oauth/callback", get(auth::feishu_callback))
         .route("/api/session", get(session))
+        .route("/api/bootstrap", get(bootstrap))
+        .nest_service("/assets", assets)
         .route("/api/logout", post(auth::logout))
         .route("/api/dashboard", get(dashboard))
         .route("/api/tasks", get(tasks).post(create))
@@ -59,7 +62,59 @@ pub fn router(app: App) -> Router {
             auth::guard,
         ))
         .layer(TraceLayer::new_for_http())
+        .layer(axum::middleware::from_fn(crate::timing::middleware))
         .with_state(app)
+}
+#[derive(Deserialize)]
+struct BootstrapQuery {
+    #[serde(default)]
+    page: String,
+}
+async fn bootstrap(
+    State(app): State<App>,
+    Extension(s): Extension<Session>,
+    Query(q): Query<BootstrapQuery>,
+) -> Result<Json<Value>> {
+    let state = session(State(app.clone()), Extension(s.clone())).await?.0;
+    let (path, result) = match q.page.as_str() {
+        "/" => ("/dashboard", dashboard(State(app.clone())).await),
+        "/tasks" => (
+            "/tasks?q=&status=",
+            tasks(
+                State(app.clone()),
+                Extension(s.clone()),
+                Query(Filter::default()),
+            )
+            .await
+            .map(|Json(v)| Json(json!(v))),
+        ),
+        "/timeline" => (
+            "/timeline?q=&source=&omit_overdue=true",
+            timeline(
+                State(app.clone()),
+                Query(Filter {
+                    omit_overdue: true,
+                    ..Default::default()
+                }),
+            )
+            .await,
+        ),
+        "/workload" => ("/workload", workload(State(app.clone())).await),
+        "/notifications" => ("/notifications", notifications(State(app.clone())).await),
+        "/settings" => (
+            "/settings",
+            settings(State(app.clone()), Extension(s.clone())).await,
+        ),
+        _ => ("", Ok(Json(Value::Null))),
+    };
+    let mut data = json!({});
+    if !path.is_empty() {
+        data[path] = match result {
+            Ok(Json(value)) => json!({"data":value}),
+            Err(Error(status, error)) => json!({"error":error,"status":status.as_u16()}),
+        };
+    }
+    Ok(Json(json!({"session":state,"data":data})))
 }
 async fn session(State(app): State<App>, Extension(s): Extension<Session>) -> Result<Json<Value>> {
     let connected = !s.subject.is_empty() && provider::user_token(&app, &s.subject).await.is_ok();
@@ -69,7 +124,8 @@ async fn session(State(app): State<App>, Extension(s): Extension<Session>) -> Re
 }
 async fn dashboard(State(app): State<App>) -> Result<Json<Value>> {
     let tasks = app.db.tasks().await?;
-    let mut events = all_events(&app).await?;
+    let mut events = app.db.events().await?;
+    events.extend(tasks.iter().map(Task::event));
     events.sort_by(|a, b| b.importance.cmp(&a.importance).then(b.ts.cmp(&a.ts)));
     let sync = serde_json::from_str::<Value>(&app.db.setting("sync").await?).unwrap_or(Value::Null);
     let members = app.db.members().await?;
@@ -230,6 +286,7 @@ async fn sync(State(app): State<App>, Extension(s): Extension<Session>) -> Resul
     Ok(Json(provider::sync(&app, &s.subject).await?))
 }
 async fn notifications(State(app): State<App>) -> Result<Json<Value>> {
+    let _timer = crate::timing::Timer::start("db");
     let rows = sqlx::query("SELECT * FROM notifications ORDER BY id DESC LIMIT 200")
         .fetch_all(&app.db.0)
         .await?;

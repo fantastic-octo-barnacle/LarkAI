@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { api } from "./api";
 
-export function useData<T>(path: string, revision = 0) {
+export function useData<T>(path: string | undefined, revision = 0) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<Error>();
   useEffect(() => {
+    if (path === undefined) return;
     const controller = new AbortController();
     setError(undefined);
     setData(undefined);

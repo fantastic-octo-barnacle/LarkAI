@@ -13,7 +13,7 @@ import {
   Bot,
   Menu,
 } from "lucide-react";
-import { api, setCsrf } from "./api";
+import { api, setCsrf, primeInitialData } from "./api";
 import type { Session, Sync } from "./types";
 import { ErrorBox, Empty } from "./components";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -42,8 +42,11 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const location = useLocation();
   const loadSession = useCallback(() => {
-    api<Session>("/session")
-      .then((s) => {
+    api<{ session: Session; data: Parameters<typeof primeInitialData>[0] }>(
+      `/bootstrap?page=${encodeURIComponent(window.location.pathname)}`,
+    )
+      .then(({ session: s, data }) => {
+        primeInitialData(data);
         setCsrf(s.csrf_token);
         setSession(s);
       })
