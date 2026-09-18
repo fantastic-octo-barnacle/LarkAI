@@ -12,12 +12,12 @@ from rmtask.config import Settings
 from rmtask.notify import Emailer, notify_important_digest, notify_task_change
 from rmtask.storage.models import TaskRecord, UserRecord
 from rmtask.storage.db import DB
-from rmtask.collector.pipeline import collect_all
+from rmtask.collector.pipeline import CollectResult, collect_all
 from rmtask.collector.summarizer import group_by_day, group_by_source, timeline_rows
 from rmtask.collector.team import derive_team_info
 from rmtask.providers import BaseProvider
 from rmtask.storage.models import EventRecord
-from rmtask.web.app import create_app
+from rmtask.web.app import create_app, maybe_send_digest
 
 
 def make_app(tmpdir: str) -> tuple:
@@ -250,6 +250,36 @@ class EmailerTest(unittest.TestCase):
         self.assertEqual(rows[0]["kind"], "task_created")
         self.assertEqual(rows[0]["status"], "failed")
         self.assertIn("smtp down", rows[0]["error"])
+
+    def test_auto_digest_only_sends_new_items(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        settings = self._settings()
+        db = DB(str(Path(tmp) / "d.db"))
+        db.init()
+
+        def make_result(ts: str) -> CollectResult:
+            return CollectResult(tasks=[], events=[], digest={"latest_important": [
+                {"title": "X", "source": "message", "ts": ts, "importance": 3}]})
+
+        now = datetime.now(timezone.utc)
+        # baseline run: records the timestamp but sends nothing
+        maybe_send_digest(db, settings, make_result(now.isoformat()))
+        self.assertEqual(db.list_notifications(), [])
+        self.assertTrue(db.get_setting("last_digest_ts"))
+        # stale/same items: no email
+        with mock.patch("rmtask.notify.emailer.smtplib.SMTP") as smtp:
+            maybe_send_digest(db, settings, make_result(now.isoformat()))
+        smtp.return_value.send_message.assert_not_called()
+        # fresh item: digest email sent and audited
+        fresh = (now + timedelta(minutes=5)).isoformat()
+        with mock.patch("rmtask.notify.emailer.smtplib.SMTP") as smtp:
+            maybe_send_digest(db, settings, make_result(fresh))
+        smtp.return_value.send_message.assert_called_once()
+        row = db.list_notifications()[0]
+        self.assertEqual(row["kind"], "digest_important")
+        self.assertEqual(row["status"], "sent")
 
 
 class TeamDeriveTest(unittest.TestCase):

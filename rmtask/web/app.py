@@ -8,12 +8,51 @@ from datetime import datetime, timezone
 
 from flask import Flask, g
 
+from rmtask.collector.pipeline import CollectResult
 from rmtask.config import Settings, env
-from rmtask.providers import build_provider
+from rmtask.providers import build_provider, now_iso
 from rmtask.storage.db import DB
 
 _auto_started = False
 _auto_lock = threading.Lock()
+
+
+def _parse_ts(value: str) -> float:
+    if not value:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        return 0.0
+
+
+def maybe_send_digest(db: DB, settings: Settings, result: CollectResult) -> None:
+    """Email a digest of important items that appeared since the last digest.
+
+    The first run only records a baseline (no email), so an existing store does
+    not trigger an immediate digest. Task-change emails are handled separately
+    by the web routes.
+    """
+    from rmtask.notify import Emailer, notify_important_digest
+
+    if settings.mode != "live" or not settings.notify_on_task_change:
+        return
+    if not Emailer(settings).configured:
+        return
+    now = now_iso()
+    last = db.get_setting("last_digest_ts", "")
+    items = result.digest.get("latest_important") or []
+    if last:
+        last_ts = _parse_ts(last)
+        fresh = [i for i in items if i.get("ts") and _parse_ts(i["ts"]) > last_ts + 1]
+    else:
+        fresh = []
+    if fresh:
+        notify_important_digest(db, Emailer(settings), settings, items=fresh)
+    db.set_setting("last_digest_ts", now)
 
 
 def _start_auto_collect(settings: Settings) -> None:
@@ -40,6 +79,7 @@ def _start_auto_collect(settings: Settings) -> None:
                     f"[auto-collect] tasks={len(result.tasks)} events={len(result.events)} "
                     f"warnings={len(result.warnings)}"
                 )
+                maybe_send_digest(db, settings, result)
             except Exception as exc:  # noqa: BLE001 - keep the loop alive
                 print(f"[auto-collect] failed: {exc}")
 

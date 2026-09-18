@@ -11,7 +11,7 @@ Task changes and important events can trigger email notifications. Delivery is b
 | Task completed | `task_completed` | After successful complete |
 | Task deleted | `task_deleted` | After admin delete |
 | Test | `task_updated` | Settings -> "Send test notification" |
-| Important digest | `digest_important` | CLI `python -m scripts.collect --notify` (latest importance>=2 items) |
+| Important digest | `digest_important` | CLI `python -m scripts.collect --notify`, or automatically by the server auto-collect loop when `RM_AUTO_COLLECT_SECONDS` is set: important items newer than the last digest trigger an email (first run only records a baseline) |
 
 The body includes task title, description, priority, due, status and actor, in both plain text and simple HTML.
 
@@ -29,7 +29,7 @@ SMTP_SSL=0               # set 1 for implicit TLS (port 465)
 NOTIFY_ON_TASK_CHANGE=1  # 0 to disable emails (audit trail still recorded)
 ```
 
-If `SMTP_HOST` is empty the notifier runs in **dry-run** mode: no email leaves, but the record is still stored with status `dry_run`. Recipients can also be overridden per-deployment from **Settings** (stored in the `settings` table as `email_recipients`).
+If `SMTP_HOST` is empty the notifier runs in **dry-run** mode: no email leaves, but the record is still stored with status `dry_run`. Recipients can also be overridden per-deployment from **Settings** (stored in the `settings` table as `email_recipients`). Task-change emails additionally include the assignee's stored email (`users.email`) when it is known.
 
 ### Common SMTP providers
 
