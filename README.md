@@ -2,25 +2,53 @@
 
 A modular repo that collects RoboMaster Research team information from **Feishu** (tasks, group-chat messages, meetings/calendar), summarizes the timeline and important updates, and presents everything through a dedicated **interactive website**: dashboard, timeline, task board (submit / cancel / complete), email notifications, and JSON APIs. It is live-first: with `FEISHU_MODE=live` every task action is ported to Feishu (task API / Bitable), and a background auto-collect keeps the site fresh. Mock mode (`FEISHU_MODE=mock`) runs fully offline for development.
 
-## Quick start
+## Launch the website
+
+### Option A — demo offline (no Feishu credentials needed)
 
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # FEISHU_MODE=live is the default once credentials are set
-python run.py                   # http://127.0.0.1:5000
-python -m scripts.collect       # optional CLI collection + digest
-python -m scripts.collect --notify   # email an important-items digest (deduped since the last digest)
-make run / make test / make collect / make export   # shortcuts (see Makefile)
+make setup                       # venv + deps + copies .env.example -> .env (if missing)
+make check                       # prints a configuration checklist
+make run                         # http://127.0.0.1:5000
 ```
 
-Open `http://127.0.0.1:5000`, click **Login** (Feishu OAuth), click **Sync** (admin), or wait for the background auto-collect to load real tasks/chats/meetings into the timeline and task board.
+Set `FEISHU_MODE=mock` in `.env` to run fully offline with the bundled sample data (dashboard, timeline, task board all work; task actions stay local).
 
-## Switching to real Feishu data
+### Option B — real Feishu data (recommended)
 
-1. Follow [docs/FEISHU_SETUP.md](docs/FEISHU_SETUP.md) to create an app and get `App ID` / `App Secret` / scopes.
-2. Set `FEISHU_MODE=live` plus `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_REDIRECT_URI` in `.env`.
-3. Log in through the website (OAuth v3), then run **Sync** (or `python -m scripts.collect`).
+1. `make setup`, then open `.env` and set:
+   - `FEISHU_MODE=live`
+   - `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_REDIRECT_URI` (create the app per [docs/FEISHU_SETUP.md](docs/FEISHU_SETUP.md))
+   - `FEISHU_BITABLE_APP_TOKEN` (or `FEISHU_WIKI_NODE_TOKEN`) + `FEISHU_BITABLE_SUBMIT_TABLE_ID` to submit tasks into the 任务管理表
+   - `FEISHU_ADMIN_OPEN_IDS` (empty = first login becomes admin)
+2. `make check` until it prints `LAUNCH READY`, then `make run`.
+3. Open `http://127.0.0.1:5000` → click **Login** (Feishu OAuth; if you see `state mismatch`, retry in a fresh tab) → click **Sync** (admin) or wait for auto-collect (`RM_AUTO_COLLECT_SECONDS`) to load chats/meetings/tasks/Bitable rows into the timeline and task board.
+
+### Production (Docker / gunicorn)
+
+```bash
+docker build -t rmhub .
+docker run -d --name rmhub -p 8000:8000 --env-file .env -v /srv/rmhub/data:/app/data rmhub
+# or: gunicorn -b 0.0.0.0:8000 -w 2 --timeout 120 "rmtask.web.app:create_app()"
+```
+
+Keep `FLASK_SECRET_KEY` random, serve behind HTTPS, and mount `/app/data` so `rmtask.db` persists. Full VPS/PaaS/custom-domain steps: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+### Utilities
+
+```bash
+make test           # unit + integration tests
+python -m scripts.collect       # CLI collection + digest
+python -m scripts.collect --notify / make notify   # email an important-items digest (deduped)
+make export         # static snapshot to site/
+python -m scripts.fetch_team_emails --limit 8      # cache member emails (needs contact scopes)
+```
+
+### Troubleshooting
+
+- `/notifications` shows `dry_run` → SMTP not configured; add `SMTP_*` (see [docs/EMAIL_NOTIFICATIONS.md](docs/EMAIL_NOTIFICATIONS.md)).
+- Sync unavailable → you are not admin; set `FEISHU_ADMIN_OPEN_IDS` or log in as the first user.
+- No chats/tasks appear → re-login after granting new scopes; the bot/user token scope is listed in [docs/FEISHU_SETUP.md](docs/FEISHU_SETUP.md).
 
 ## What the website shows
 

@@ -1,9 +1,18 @@
-PYTHON ?= python3
+PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3)
 
-.PHONY: install run test collect notify export
+.PHONY: setup check run test collect notify export
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
+
+setup:
+	python3 -m venv .venv
+	$(PYTHON) -m pip install -r requirements.txt
+	@test -f .env || cp .env.example .env
+	@echo "Ready. Edit .env, then: make check && make run"
+
+check:
+	$(PYTHON) -m scripts.check_setup
 
 run:
 	$(PYTHON) run.py

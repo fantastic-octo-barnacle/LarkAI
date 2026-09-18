@@ -7,6 +7,30 @@ This document covers turning the repo into a public/private GitHub project and s
 
 This repo is already published at **https://github.com/fantastic-octo-barnacle/LarkAI** (branch `main`, SSH remote `git@github.com:fantastic-octo-barnacle/LarkAI.git`). The static mirror URL will be `https://fantastic-octo-barnacle.github.io/LarkAI/` once Pages is enabled.
 
+## 0. Launch the website
+
+1. **Setup once**
+   ```bash
+   make setup        # python venv + deps + .env from .env.example (only if missing)
+   make check        # prints a config checklist; every line should say OK
+   ```
+2. **Local dev**: set `FEISHU_MODE=mock` (offline demo) or fill the Feishu credentials (`FEISHU_APP_ID`/`_SECRET`/`_REDIRECT_URI`) for live data, then
+   ```bash
+   make run          # http://127.0.0.1:5000
+   ```
+   First live run: open the site → **Login** (Feishu OAuth) → **Sync** (admin) or wait for the auto-collect interval.
+3. **Production** (two workers, persistent DB volume):
+   ```bash
+   docker build -t rmhub .
+   docker run -d --name rmhub -p 8000:8000 --env-file .env -v /srv/rmhub/data:/app/data rmhub
+   ```
+   or without Docker:
+   ```bash
+   pip install -r requirements.txt
+   gunicorn -b 0.0.0.0:8000 -w 2 --timeout 120 "rmtask.web.app:create_app()"
+   ```
+4. **Checks**: `make test`; open `/settings` for SMTP status and `/notifications` for email audit.
+
 ## 1. GitHub repository
 
 1. Create a repository, e.g. `rm-task-hub` (private is fine), at `https://github.com/<org>/rm-task-hub`.
