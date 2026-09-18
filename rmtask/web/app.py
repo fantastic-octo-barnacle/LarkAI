@@ -54,6 +54,10 @@ def create_app(settings: Settings | None = None) -> Flask:
     app.secret_key = cfg.secret_key or "dev-secret-change-me"
     app.config["JSON_AS_ASCII"] = False
 
+    from rmtask.web.access import configure_access
+
+    configure_access(app)
+
     from rmtask.web.routes import bp
 
     app.register_blueprint(bp)

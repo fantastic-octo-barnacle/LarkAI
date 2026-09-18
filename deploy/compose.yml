@@ -1,0 +1,37 @@
+name: larkai
+services:
+  web:
+    image: ${LARKAI_IMAGE:?Set an immutable LARKAI_IMAGE reference}
+    env_file: .env
+    environment:
+      CF_ACCESS_ISSUER: ${CF_ACCESS_ISSUER:?Cloudflare issuer is required}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:?Cloudflare audience is required}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?A random Flask secret is required}
+      FEISHU_MODE: live
+      RM_DB_PATH: /app/data/rmtask.db
+      RM_AUTO_COLLECT_SECONDS: '0'
+    volumes:
+      - data:/app/data
+    networks:
+      edge:
+        aliases: [larkai]
+    # Caddy is the only published entry point; no host port.
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,urllib.error;\ntry: urllib.request.urlopen('http://127.0.0.1:8000/'); raise RuntimeError('Origin allowed unauthenticated access')\nexcept urllib.error.HTTPError as e: assert e.code == 403"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 384m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+networks:
+  edge:
+    external: true
+    name: herkules_default
+volumes:
+  data:

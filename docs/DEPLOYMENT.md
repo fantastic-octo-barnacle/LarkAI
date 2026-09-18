@@ -106,3 +106,57 @@ Limitation: GitHub Pages serves only static files, so task submit/cancel and OAu
 3. Feishu app: 企业自建应用 with 网页应用 capability, redirect URL matching prod, scopes per `docs/FEISHU_SETUP.md`.
 4. Cron collection + email notifications enabled.
 5. Optional: GitHub Pages static mirror for the public-facing competition info.
+
+## dashboard.herkules.dev (independent production deployment)
+
+`.github/workflows/deploy.yml` tests, builds and publishes a Linux/amd64 image,
+then deploys its immutable GHCR digest on every push to `main`. A manual dispatch
+on `main` redeploys that revision. It changes only the `larkai` Compose project in
+`~/larkai`; it never deploys the Herkules application stack.
+
+The Herkules repository owns the one-time Caddy route, DNS and Cloudflare Access
+application. LarkAI joins the existing `herkules_default` network as `larkai`, with
+no published host port. The app verifies Cloudflare's signature, issuer, audience,
+expiry and user identity on **every** request (including assets and APIs). Access
+uses the existing Herkules team policy. Feishu OAuth is a separate **Connect Feishu**
+step for user-scoped API permissions; Cloudflare identities are not Feishu open IDs
+and do not automatically become app administrators.
+
+GitHub environment **production** holds `DEPLOY_HOST`, `DEPLOY_USER`,
+`DEPLOY_SSH_KEY`, and `DEPLOY_KNOWN_HOSTS`. Optional secret **LARKAI_ENV** contains
+an entire dotenv file; if absent, deploys retain the server-owned `~/larkai/.env`.
+Never commit that file or credentials. Populate it with the real values from
+`.env.example`, plus:
+
+```dotenv
+FEISHU_MODE=live
+FEISHU_REDIRECT_URI=https://dashboard.herkules.dev/oauth/callback
+FLASK_SECRET_KEY=<random stable secret>
+CF_ACCESS_ISSUER=https://hxyulin.cloudflareaccess.com
+CF_ACCESS_AUD=<terraform output dashboard_access_aud>
+RM_AUTO_COLLECT_SECONDS=0
+```
+
+Add the callback URL to the Feishu application's allowlist. Set explicit
+`FEISHU_ADMIN_OPEN_IDS` before enabling Feishu login. With no Feishu credentials,
+the protected site serves an empty live dashboard; it does not seed demo tasks.
+Collection is disabled until the app credentials, data source and user connection
+are configured. For two Gunicorn workers use a single external collector schedule,
+not the per-process background thread. SMTP is off unless explicitly configured.
+
+`larkai_data` persists SQLite across releases. Each subsequent deployment takes a
+consistent SQLite snapshot into `~/larkai/backups/` and retains the previous image
+and Compose configuration. Failed startup restores that image/configuration;
+database migrations are **not** reversed. To roll back manually:
+
+```sh
+cd ~/larkai
+cp backups/compose.previous.yml incoming/compose.yml
+cp backups/image.previous.env incoming/image.env
+bash apply.sh
+```
+
+These on-host snapshots do not replace an off-host backup policy. The workflow
+checks container health (origin rejects requests without Access tokens) and the
+public Cloudflare login challenge. End-to-end team sign-in must be checked in a
+browser with an authorized account.

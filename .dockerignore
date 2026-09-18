@@ -16,3 +16,5 @@ tests/
 docs/
 FEISHU_DOC.md
 *.md
+
+.venv*/

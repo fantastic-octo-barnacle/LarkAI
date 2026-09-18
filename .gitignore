@@ -10,3 +10,5 @@ data/mock_state.json
 data/rmtask.db
 /site/
 .DS_Store
+
+.venv*/
