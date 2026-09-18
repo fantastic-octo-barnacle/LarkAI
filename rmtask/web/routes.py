@@ -8,7 +8,7 @@ import secrets
 import sqlite3
 from datetime import datetime, timezone
 
-from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 
 from rmtask.api import AuthManager
 from rmtask.collector.pipeline import collect_all
@@ -367,7 +367,6 @@ def oauth_callback():
             g.db.link_feishu(g.identity["sub"], open_id)
         except sqlite3.IntegrityError:
             return "This Feishu account is already connected to another account", 409
-    existing = g.db.get_user(open_id)
     is_admin = open_id in g.settings.admin_open_ids
     if not current_app.config.get("OIDC_ENABLED") and not g.settings.admin_open_ids and not any(u.is_admin for u in g.db.list_users()):
         is_admin = True  # first user to log in becomes admin until FEISHU_ADMIN_OPEN_IDS is set

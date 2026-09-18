@@ -16,7 +16,7 @@
         <a href="{{ url_for('main.tasks_page') }}">Tasks</a>
         <a href="{{ url_for('main.workload_page') }}">Workload</a>
         <a href="{{ url_for('main.notifications') }}">Notifications</a>
-        <a href="{{ url_for('main.settings_page') }}">Settings</a>
+        {% if not oidc_enabled or is_admin %}<a href="{{ url_for('main.settings_page') }}">Settings</a>{% endif %}
         {% if is_admin %}<a href="{{ url_for('main.diagnostics') }}">Diagnostics</a>{% endif %}
         {% if is_admin %}<form class="inline" method="post" action="{{ url_for('main.sync') }}">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<button class="btn ghost" type="submit">⟳ Sync</button></form>{% endif %}
         {% if identity %}
