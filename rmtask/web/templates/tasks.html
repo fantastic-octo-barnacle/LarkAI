@@ -10,7 +10,7 @@
 
 <details class="card create-card">
   <summary><b>＋ New task</b> ({{ 'submits to Bitable, auto-fallback to Feishu task API' if settings and settings.bitable_submit_table_id else 'submits to Feishu task API' }})</summary>
-  <form method="post" action="{{ url_for('main.task_create') }}" class="grid-form">
+  <form method="post" action="{{ url_for('main.task_create') }}" class="grid-form">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}
     <label>Title<input name="title" required placeholder="e.g. Polish navigation stack"></label>
     <label>兵种类型
       <select name="category">
@@ -54,7 +54,7 @@
   <input type="search" name="q" placeholder="Search…" value="{{ q }}">
   <button class="btn" type="submit">Filter</button>
   {% if is_admin %}
-  <form class="inline" method="post" action="{{ url_for('main.members_refresh') }}"><button class="btn" type="submit">⟳ Members</button></form>
+  <form class="inline" method="post" action="{{ url_for('main.members_refresh') }}">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<button class="btn" type="submit">⟳ Members</button></form>
   {% endif %}
 </form>
 
@@ -82,11 +82,11 @@
           </div>
           <div class="actions">
             {% if t.status in ('pending', 'in_progress') and (t.source in ('feishu', '') or (t.source == 'bitable' and settings and settings.bitable_tasks_table_id)) %}
-              <form class="inline" method="post" action="{{ url_for('main.task_complete', guid=t.guid) }}"><button class="btn small" type="submit">Complete</button></form>
-              <form class="inline" method="post" action="{{ url_for('main.task_cancel', guid=t.guid) }}"><button class="btn danger small" data-confirm="Cancel task '{{ t.title }}'? It will be updated in Feishu." type="submit">Cancel</button></form>
+              <form class="inline" method="post" action="{{ url_for('main.task_complete', guid=t.guid) }}">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<button class="btn small" type="submit">Complete</button></form>
+              <form class="inline" method="post" action="{{ url_for('main.task_cancel', guid=t.guid) }}">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<button class="btn danger small" data-confirm="Cancel task '{{ t.title }}'? It will be updated in Feishu." type="submit">Cancel</button></form>
             {% endif %}
             {% if t.source == 'bitable' and not (settings and settings.bitable_tasks_table_id) %}<span class="muted small">mirrored (read-only until write scopes granted)</span>{% endif %}
-            {% if is_admin and t.source in ('feishu', 'bitable', '') %}<form class="inline" method="post" action="{{ url_for('main.task_delete', guid=t.guid) }}"><button class="btn danger small" data-confirm="Delete task '{{ t.title }}' permanently?{% if t.source == 'bitable' %} It will be removed from the Bitable base.{% endif %}" type="submit">Delete</button></form>{% endif %}
+            {% if is_admin and t.source in ('feishu', 'bitable', '') %}<form class="inline" method="post" action="{{ url_for('main.task_delete', guid=t.guid) }}">{% if oidc_enabled %}<input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% endif %}<button class="btn danger small" data-confirm="Delete task '{{ t.title }}' permanently?{% if t.source == 'bitable' %} It will be removed from the Bitable base.{% endif %}" type="submit">Delete</button></form>{% endif %}
           </div>
         </article>
       {% endfor %}

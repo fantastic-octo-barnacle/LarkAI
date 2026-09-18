@@ -58,6 +58,12 @@ def create_app(settings: Settings | None = None) -> Flask:
     from rmtask.web.access import configure_access
 
     configure_access(app)
+    from rmtask.web.oidc import configure_oidc
+    configure_oidc(app, cfg)
+
+    @app.get("/healthz")
+    def healthz():
+        return {"ok": True}
 
     from rmtask.web.routes import bp
 
@@ -82,6 +88,9 @@ def create_app(settings: Settings | None = None) -> Flask:
         g.db = db
         g.settings = cfg
         g.provider = build_provider(cfg, db)
+
+    from rmtask.web.feishu_connection import require_feishu
+    app.before_request(require_feishu)
 
     if cfg.auto_collect_seconds > 0:
         _start_auto_collect(cfg)

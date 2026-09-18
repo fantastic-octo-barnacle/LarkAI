@@ -74,6 +74,10 @@ jobs:
           FEISHU_BITABLE_TASKS_TABLE_ID: ${{ secrets.FEISHU_BITABLE_TASKS_TABLE_ID }}
           FEISHU_ADMIN_OPEN_IDS: ${{ secrets.FEISHU_ADMIN_OPEN_IDS }}
           FEISHU_SCOPES: ${{ secrets.FEISHU_SCOPES }}
+          OIDC_ISSUER: ${{ secrets.OIDC_ISSUER }}
+          OIDC_CLIENT_ID: ${{ secrets.OIDC_CLIENT_ID }}
+          OIDC_CLIENT_SECRET: ${{ secrets.OIDC_CLIENT_SECRET }}
+          PUBLIC_ORIGIN: ${{ secrets.PUBLIC_ORIGIN }}
         shell: bash
         run: |
           set -euo pipefail
@@ -89,7 +93,7 @@ jobs:
           # Use a disposable registry config; don't overwrite other apps' credentials.
           printf '%s' "$GH_TOKEN" | ssh "${ssh_opts[@]}" "$remote" "umask 077; mkdir -p ~/larkai/.docker; docker --config ~/larkai/.docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
           ssh "${ssh_opts[@]}" "$remote" 'export DOCKER_CONFIG="$HOME/larkai/.docker"; trap '\''rm -rf "$DOCKER_CONFIG"'\'' EXIT; bash ~/larkai/apply.sh'
-      - name: Verify Cloudflare challenge
+      - name: Verify authentication redirect
         run: |
           curl -sS --max-time 30 -D headers -o /dev/null https://dashboard.herkules.dev/
-          grep -qi '^location: https://hxyulin.cloudflareaccess.com/' headers
+          grep -qiE '^location: (/oidc/login|https://hxyulin.cloudflareaccess.com/)' headers

@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import re
 import secrets
+import sqlite3
 from datetime import datetime, timezone
 
-from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 
+from rmtask.web.feishu_connection import connection_required, safe_return
 from rmtask.api import AuthManager
 from rmtask.collector.pipeline import collect_all
 from rmtask.collector.members import fetch_all_members
@@ -59,6 +61,8 @@ def _current_user() -> UserRecord | None:
 
 
 def _is_admin(user: UserRecord | None) -> bool:
+    if current_app.config.get("OIDC_ENABLED"):
+        return g.get("identity", {}).get("role") == "admin"
     if not user:
         return False
     if user.is_admin:
@@ -323,6 +327,7 @@ def settings_page():
 
 @bp.get("/login")
 def login():
+    session["feishu_return_to"] = safe_return(request.args.get("next"))
     if g.settings.mode == "mock":
         demo = UserRecord(
             open_id="ou_demo_user",
@@ -334,6 +339,8 @@ def login():
         session["open_id"] = demo.open_id
         flash("Logged in as demo user (mock mode).", "success")
         return redirect(url_for("main.index"))
+    if not g.settings.app_id or not g.settings.app_secret or not g.settings.redirect_uri:
+        return connection_required(session["feishu_return_to"], status=503)
     state = secrets.token_urlsafe(16)
     session["oauth_state"] = state
     auth = AuthManager(g.settings)
@@ -344,28 +351,36 @@ def login():
 def oauth_callback():
     code = request.args.get("code", "")
     state = request.args.get("state", "")
-    if session.get("oauth_state") != state:
+    expected_state = session.pop("oauth_state", None)
+    if not expected_state or not state or not secrets.compare_digest(expected_state, state):
         return "state mismatch", 400
+    target = safe_return(session.pop("feishu_return_to", None))
     if not code:
-        return "authorization failed: no code", 400
+        return connection_required(target, message="Feishu access was not granted. You can try again or return to the dashboard.", status=400)
     auth = AuthManager(g.settings)
     try:
         tokens = auth.exchange_code(code)
         info = auth.user_info(tokens["access_token"])
-    except Exception as exc:  # noqa: BLE001 - surface OAuth failures on the page
-        return f"OAuth failed: {exc}", 400
+    except Exception:  # Keep upstream token/error payloads out of browser responses.
+        return connection_required(target, message="Feishu connection could not be verified. Please try again.", status=400)
     data = info.get("data", info)
     open_id = data.get("open_id") or data.get("user_id") or ""
-    existing = g.db.get_user(open_id)
+    if not open_id:
+        return "Feishu did not return an Open ID", 400
+    if current_app.config.get("OIDC_ENABLED"):
+        try:
+            g.db.link_feishu(g.identity["sub"], open_id)
+        except sqlite3.IntegrityError:
+            return "This Feishu account is already connected to another account", 409
     is_admin = open_id in g.settings.admin_open_ids
-    if not g.settings.admin_open_ids and not any(u.is_admin for u in g.db.list_users()):
+    if not current_app.config.get("OIDC_ENABLED") and not g.settings.admin_open_ids and not any(u.is_admin for u in g.db.list_users()):
         is_admin = True  # first user to log in becomes admin until FEISHU_ADMIN_OPEN_IDS is set
     user = UserRecord(
         open_id=open_id,
         name=data.get("name", open_id),
         email=data.get("email", ""),
         avatar_url=data.get("avatar_url", ""),
-        is_admin=is_admin,
+        is_admin=False if current_app.config.get("OIDC_ENABLED") else is_admin,
     )
     g.db.upsert_user(user)
     now = int(datetime.now(timezone.utc).timestamp())
@@ -378,7 +393,7 @@ def oauth_callback():
         scope=tokens.get("scope", ""),
     ))
     session["open_id"] = open_id
-    return redirect(url_for("main.index"))
+    return redirect(target)
 
 
 @bp.get("/logout")

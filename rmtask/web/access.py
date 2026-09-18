@@ -25,6 +25,8 @@ def configure_access(app: Flask) -> None:
 
     @app.before_request
     def authenticate_access():
+        if request.path == "/healthz":
+            return None
         token = request.headers.get("Cf-Access-Jwt-Assertion", "")
         if not token:
             return "Cloudflare Access authentication required", 403

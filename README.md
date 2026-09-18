@@ -99,7 +99,8 @@ docs/                  setup, collection, interactive, email, deployment docs
 ## Repository
 
 - GitHub: <https://github.com/fantastic-octo-barnacle/LarkAI> (branch `main`, SSH remote)
-- Static mirror: `https://fantastic-octo-barnacle.github.io/LarkAI/` once GitHub Pages is enabled
+- Production: `https://dashboard.herkules.dev/` (Herkules OIDC; Feishu is connected separately).
+- The deploy workflow runs tests and deploys independently. Separate CI and Pages workflows are disabled.
 
 ## Tests
 
@@ -108,3 +109,17 @@ python -m unittest discover -s tests -v
 ```
 
 `tests/test_smoke.py` covers the mock flow (dashboard render, login + sync, task create / cancel / complete with notification audit, digest, JSON APIs); `tests/test_live_api.py` locks the Feishu API contract with mocked HTTP (OAuth v3 URLs, task create/patch/list bodies, IM `msg_type` and seconds-based timestamps, calendar seconds).
+
+### Sign-in and Feishu feature access
+
+Production signs users in through Herkules and displays their name. Dashboard,
+timeline and workload pages show shared team data without requiring a personal
+Feishu connection. Opening Tasks (or using sync, diagnostics or member refresh)
+requires a connected Feishu account. The page offers **Connect Feishu**, then
+returns to the requested page after authorization. Existing connections are
+reused; expired tokens are refreshed or lead back to the connection prompt.
+Task submissions are never replayed automatically after authorization.
+
+Herkules owns admin roles. Feishu authorization stays in LarkAI for now and is
+linked to the immutable Herkules subject, never matched by email. Only the
+requested feature is gated; declining Feishu access keeps dashboard access.
