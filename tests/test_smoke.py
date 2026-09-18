@@ -17,7 +17,8 @@ from rmtask.collector.summarizer import group_by_day, group_by_source, timeline_
 from rmtask.collector.team import derive_team_info
 from rmtask.providers import BaseProvider
 from rmtask.storage.models import EventRecord
-from rmtask.web.app import create_app, maybe_send_digest
+from rmtask.notify.service import maybe_send_digest
+from rmtask.web.app import create_app
 
 
 def make_app(tmpdir: str) -> tuple:

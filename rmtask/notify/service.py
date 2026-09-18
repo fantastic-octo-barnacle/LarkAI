@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import html as html_escape
+from datetime import datetime, timezone
 
+from rmtask.collector.pipeline import CollectResult
 from rmtask.config import Settings
 from rmtask.notify.emailer import Emailer
+from rmtask.providers import now_iso
 from rmtask.storage.db import DB
 from rmtask.storage.models import TaskRecord
 
@@ -89,3 +92,40 @@ def notify_task_change(
         recipients = (recipients + " " + owner.email).strip()
     _deliver(db, emailer, settings, kind=f"task_{kind}", subject=subject,
              text=text, body=body, recipients=recipients)
+
+
+def _parse_ts(value: str) -> float:
+    if not value:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        return 0.0
+
+
+def maybe_send_digest(db: DB, settings: Settings, result: CollectResult) -> None:
+    """Email a digest of important items that appeared since the last digest.
+
+    The first run only records a baseline (no email), so an existing store does
+    not trigger an immediate digest. Shared by the server auto-collect loop and
+    the CLI `scripts/collect.py --notify`. Task-change emails are handled
+    separately by the web routes.
+    """
+    if settings.mode != "live" or not settings.notify_on_task_change:
+        return
+    if not Emailer(settings).configured:
+        return
+    now = now_iso()
+    last = db.get_setting("last_digest_ts", "")
+    items = result.digest.get("latest_important") or []
+    if last:
+        last_ts = _parse_ts(last)
+        fresh = [i for i in items if i.get("ts") and _parse_ts(i["ts"]) > last_ts + 1]
+    else:
+        fresh = []
+    if fresh:
+        notify_important_digest(db, Emailer(settings), settings, items=fresh)
+    db.set_setting("last_digest_ts", now)

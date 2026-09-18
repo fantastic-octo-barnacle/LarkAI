@@ -11,7 +11,7 @@ import json
 
 from rmtask.config import load_env
 from rmtask.collector.pipeline import collect_all
-from rmtask.notify import Emailer, notify_important_digest
+from rmtask.notify.service import maybe_send_digest
 from rmtask.providers import build_provider
 from rmtask.storage.db import DB
 
@@ -36,8 +36,8 @@ def main() -> None:
     for warning in result.warnings:
         print(f"WARNING: {warning}")
     if args.notify:
-        notify_important_digest(db, Emailer(env), env, items=result.digest["latest_important"])
-        print("important digest queued (status in DB notifications)")
+        maybe_send_digest(db, env, result)
+        print("important digest queued if new items (status in DB notifications)")
     print(json.dumps(result.digest, ensure_ascii=False, indent=2, default=str))
 
 

@@ -11,7 +11,7 @@ Task changes and important events can trigger email notifications. Delivery is b
 | Task completed | `task_completed` | After successful complete |
 | Task deleted | `task_deleted` | After admin delete |
 | Test | `task_updated` | Settings -> "Send test notification" |
-| Important digest | `digest_important` | CLI `python -m scripts.collect --notify`, or automatically by the server auto-collect loop when `RM_AUTO_COLLECT_SECONDS` is set: important items newer than the last digest trigger an email (first run only records a baseline) |
+| Important digest | `digest_important` | CLI `python -m scripts.collect --notify`, or automatically by the server auto-collect loop when `RM_AUTO_COLLECT_SECONDS` is set. Both share the same dedup: only important items newer than the last digest trigger an email (first run only records a baseline) |
 
 The body includes task title, description, priority, due, status and actor, in both plain text and simple HTML.
 
