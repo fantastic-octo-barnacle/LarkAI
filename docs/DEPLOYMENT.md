@@ -114,38 +114,35 @@ then deploys its immutable GHCR digest on every push to `main`. A manual dispatc
 on `main` redeploys that revision. It changes only the `larkai` Compose project in
 `~/larkai`; it never deploys the Herkules application stack.
 
-The Herkules repository owns the one-time Caddy route, DNS and Cloudflare Access
-application. LarkAI joins the existing `herkules_default` network as `larkai`, with
-no published host port. The app verifies Cloudflare's signature, issuer, audience,
-expiry and user identity on **every** request (including assets and APIs). Access
-uses the existing Herkules team policy. Feishu OAuth is a separate **Connect Feishu**
-step for user-scoped API permissions; Cloudflare identities are not Feishu open IDs
-and do not automatically become app administrators.
+The Herkules repository owns the one-time Caddy route and DNS/Cloudflare Access
+configuration. LarkAI owns its image, runtime environment and database. Native
+Herkules OIDC handles the website identity and roles. Optional Cloudflare Access
+remains an additional edge gate when `CF_ACCESS_ISSUER` and `CF_ACCESS_AUD` are set.
 
-GitHub environment **production** holds `DEPLOY_HOST`, `DEPLOY_USER`,
-`DEPLOY_SSH_KEY`, and `DEPLOY_KNOWN_HOSTS`. Optional secret **LARKAI_ENV** contains
-dotenv settings to merge into the server-owned `~/larkai/.env`. Unspecified keys
-are preserved; an explicit `KEY=` clears a value. If absent, deploys retain that file.
-Never commit that file or credentials. Populate the secret with the real Feishu
-values from `.env.example`. Cloudflare and Flask settings are already provisioned
-on the server and do not need to be copied into this secret. The complete server
-configuration includes:
+Configure the GitHub `production` environment with the OIDC and Feishu secrets
+listed below. A `LARKAI_ENV` dotenv secret may supply additional runtime settings;
+individual secrets override corresponding values. Missing values preserve the
+server's existing `.env`. Example non-secret settings:
 
 ```dotenv
 FEISHU_MODE=live
 FEISHU_REDIRECT_URI=https://dashboard.herkules.dev/oauth/callback
-FLASK_SECRET_KEY=<random stable secret>
-CF_ACCESS_ISSUER=https://hxyulin.cloudflareaccess.com
-CF_ACCESS_AUD=<terraform output dashboard_access_aud>
-RM_AUTO_COLLECT_SECONDS=0
+OIDC_ISSUER=https://herkules.dev/auth
+OIDC_CLIENT_ID=larkai
+PUBLIC_ORIGIN=https://dashboard.herkules.dev
+RM_AUTO_COLLECT_SECONDS=300
 ```
 
-Add the callback URL to the Feishu application's allowlist. Set explicit
-`FEISHU_ADMIN_OPEN_IDS` before enabling Feishu login. With no Feishu credentials,
-the protected site serves an empty live dashboard; it does not seed demo tasks.
-Collection is disabled until the app credentials, data source and user connection
-are configured. For two Gunicorn workers use a single external collector schedule,
-not the per-process background thread. SMTP is off unless explicitly configured.
+Provision a stable random `FLASK_SECRET_KEY`, `OIDC_CLIENT_SECRET`, and the Feishu
+app credentials. Register both providers' callback URLs. Users first sign in
+through Herkules; Tasks offers Feishu authorization only when needed. No personal
+connection is required to view shared dashboard data. A deployment never links
+existing Feishu users by matching their names or email addresses.
+
+`RM_AUTO_COLLECT_SECONDS` controls the existing per-process collector. With multiple
+Gunicorn workers it runs once per worker; a single collector schedule is preferable
+for shared production sync. This feature does not change collection ownership or
+notification behavior.
 
 `larkai_data` persists SQLite across releases. Each subsequent deployment takes a
 consistent SQLite snapshot into `~/larkai/backups/` and retains the previous image
@@ -160,8 +157,7 @@ bash apply.sh
 ```
 
 These on-host snapshots do not replace an off-host backup policy. The workflow
-checks container health (origin rejects requests without Access tokens) and the
-public Cloudflare login challenge. End-to-end team sign-in must be checked in a
+checks `/healthz` and the public authentication redirect. End-to-end team sign-in must be checked in a
 browser with an authorized account.
 
 ### Individual GitHub secrets
@@ -199,6 +195,5 @@ cannot be linked to two Herkules accounts; names/emails never link identities.
 No manual Open ID list or directory lookup permission is needed. The original
 Feishu callback URI still needs to be allowlisted in the Feishu app.
 
-The Cloudflare Access application is retired only after OIDC is deployed and
-origin probes verify unauthenticated redirects/API denials. Cloudflare DNS/proxy
-stays enabled. `/healthz` returns only `{"ok":true}` without authentication.
+Cloudflare Access remains configured during rollout; retiring it is a separate
+infrastructure change. Cloudflare DNS/proxy stays enabled. `/healthz` returns only `{"ok":true}` without authentication.

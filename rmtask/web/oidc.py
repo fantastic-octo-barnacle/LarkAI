@@ -17,6 +17,7 @@ from flask_session import Session
 from joserfc.errors import JoseError
 
 from rmtask.storage.db import DB
+from rmtask.web.feishu_connection import safe_return
 
 
 def configure_oidc(app, cfg):
@@ -57,6 +58,7 @@ def configure_oidc(app, cfg):
     def start_login():
         if request.path.startswith('/api/') or request.method not in ('GET', 'HEAD'):
             return jsonify(error='authentication_required'), 401
+        session['oidc_return_to'] = safe_return(request.full_path.rstrip('?'), '/')
         return redirect('/oidc/login')
 
     @app.before_request
@@ -99,7 +101,9 @@ def configure_oidc(app, cfg):
 
     @bp.get('/oidc/login')
     def login():
+        target = safe_return(session.get('oidc_return_to'), '/')
         session.clear()
+        session['oidc_return_to'] = target
         app.session_interface.regenerate(session)
         try:
             return client.authorize_redirect(origin+'/oidc/callback')
@@ -118,13 +122,14 @@ def configure_oidc(app, cfg):
                 abort(403, 'Invalid Herkules identity')
         except (OAuthError, JoseError, requests.RequestException, ValueError):
             return 'Sign-in could not be verified. Please try again.', 400
+        target = safe_return(session.get('oidc_return_to'), '/')
         session.clear()
         session['herkules'] = {'sub': identity['sub'], 'token': {
             'access_token': token['access_token'], 'token_type': token.get('token_type', 'Bearer'),
             'expires_at': token.get('expires_at', time.time()+int(token.get('expires_in', 900)))}}
         session['csrf_token'] = secrets.token_urlsafe(32)
         app.session_interface.regenerate(session)
-        return redirect('/')
+        return redirect(target)
 
     @bp.post('/oidc/logout')
     def logout():

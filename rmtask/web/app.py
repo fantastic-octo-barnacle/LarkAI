@@ -89,6 +89,9 @@ def create_app(settings: Settings | None = None) -> Flask:
         g.settings = cfg
         g.provider = build_provider(cfg, db)
 
+    from rmtask.web.feishu_connection import require_feishu
+    app.before_request(require_feishu)
+
     if cfg.auto_collect_seconds > 0:
         _start_auto_collect(cfg)
 

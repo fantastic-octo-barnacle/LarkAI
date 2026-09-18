@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 
+from rmtask.web.feishu_connection import connection_required, safe_return
 from rmtask.api import AuthManager
 from rmtask.collector.pipeline import collect_all
 from rmtask.collector.members import fetch_all_members
@@ -326,6 +327,7 @@ def settings_page():
 
 @bp.get("/login")
 def login():
+    session["feishu_return_to"] = safe_return(request.args.get("next"))
     if g.settings.mode == "mock":
         demo = UserRecord(
             open_id="ou_demo_user",
@@ -337,6 +339,8 @@ def login():
         session["open_id"] = demo.open_id
         flash("Logged in as demo user (mock mode).", "success")
         return redirect(url_for("main.index"))
+    if not g.settings.app_id or not g.settings.app_secret or not g.settings.redirect_uri:
+        return connection_required(session["feishu_return_to"], status=503)
     state = secrets.token_urlsafe(16)
     session["oauth_state"] = state
     auth = AuthManager(g.settings)
@@ -350,14 +354,15 @@ def oauth_callback():
     expected_state = session.pop("oauth_state", None)
     if not expected_state or not state or not secrets.compare_digest(expected_state, state):
         return "state mismatch", 400
+    target = safe_return(session.pop("feishu_return_to", None))
     if not code:
-        return "authorization failed: no code", 400
+        return connection_required(target, message="Feishu access was not granted. You can try again or return to the dashboard.", status=400)
     auth = AuthManager(g.settings)
     try:
         tokens = auth.exchange_code(code)
         info = auth.user_info(tokens["access_token"])
-    except Exception as exc:  # noqa: BLE001 - surface OAuth failures on the page
-        return f"OAuth failed: {exc}", 400
+    except Exception:  # Keep upstream token/error payloads out of browser responses.
+        return connection_required(target, message="Feishu connection could not be verified. Please try again.", status=400)
     data = info.get("data", info)
     open_id = data.get("open_id") or data.get("user_id") or ""
     if not open_id:
@@ -388,7 +393,7 @@ def oauth_callback():
         scope=tokens.get("scope", ""),
     ))
     session["open_id"] = open_id
-    return redirect(url_for("main.index"))
+    return redirect(target)
 
 
 @bp.get("/logout")

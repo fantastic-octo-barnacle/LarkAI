@@ -23,14 +23,14 @@
           <span class="user-chip">{{ identity.name or identity.email }}</span>
           <form class="inline" method="post" action="/oidc/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn ghost">Sign out</button></form>
         {% endif %}
-        {% if access_identity %}
+        {% if access_identity and not identity %}
           <span class="user-chip">{{ access_identity.email }}</span>
           <a href="/cdn-cgi/access/logout">Sign out</a>
         {% endif %}
-        {% if current_user %}
+        {% if current_user and not oidc_enabled %}
           <span class="user-chip">{{ current_user.name }}</span>
-          {% if not oidc_enabled %}<a href="{{ url_for('main.logout') }}">Logout</a>{% endif %}
-        {% elif settings.mode == "mock" or settings.app_id %}
+          <a href="{{ url_for('main.logout') }}">Logout</a>
+        {% elif not oidc_enabled and (settings.mode == "mock" or settings.app_id) %}
           <a class="btn primary" href="{{ url_for('main.login') }}">{{ "Connect Feishu" if access_identity or oidc_enabled else "Login" }}</a>
         {% endif %}
       </nav>
@@ -44,7 +44,7 @@
   </div>
   {% endif %}
   <main class="wrap">
-    {% if (access_identity or oidc_enabled) and not settings.app_id %}
+    {% if access_identity and not oidc_enabled and not settings.app_id %}
       <div class="flash">Feishu is not connected yet. Live tasks will appear after the connection is configured.</div>
     {% endif %}
     {% with messages = get_flashed_messages(with_categories=true) %}

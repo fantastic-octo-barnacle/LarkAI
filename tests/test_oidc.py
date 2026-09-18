@@ -21,7 +21,7 @@ ISSUER = 'https://identity.example/auth'
 ORIGIN = 'https://dashboard.example'
 
 
-class OIDCTests(unittest.TestCase):
+class OIDCFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.env = patch.dict(os.environ, {'OIDC_ISSUER': ISSUER, 'OIDC_CLIENT_ID': 'larkai',
@@ -94,6 +94,8 @@ class OIDCTests(unittest.TestCase):
         self.start()
         return self.get('/oidc/callback?code=valid&state='+self.state)
 
+
+class OIDCTests(OIDCFixture):
     def test_anonymous_pages_redirect_and_api_and_posts_are_denied(self):
         self.assertEqual(self.get('/').location, '/oidc/login')
         self.assertEqual(self.get('/api/stats.json').status_code, 401)
