@@ -38,3 +38,7 @@ class IndividualSecretTests(unittest.TestCase):
         from deploy.runtime_env import render
         with self.assertRaises(ValueError):
             render({'FEISHU_APP_SECRET': 'value\nCF_ACCESS_AUD='})
+
+    def test_pasted_values_can_have_surrounding_quotes_and_newlines(self):
+        from deploy.runtime_env import render
+        self.assertEqual(render({'FEISHU_APP_ID': ' \n"cli_test"\n'}), "FEISHU_APP_ID='cli_test'\n")

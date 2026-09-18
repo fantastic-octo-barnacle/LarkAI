@@ -13,7 +13,9 @@ KEYS = (
 def render(environ):
     lines = [environ.get('LARKAI_ENV', '').rstrip()]
     for key in KEYS:
-        value = environ.get(key, '')
+        value = environ.get(key, '').strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ('\"', "'"):
+            value = value[1:-1].strip()
         if value:
             if any(c in value for c in "\r\n'"):
                 raise ValueError(f'{key} must be a single-line value without single quotes')
