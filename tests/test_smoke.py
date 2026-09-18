@@ -6,6 +6,8 @@ import tempfile
 import shutil
 import unittest
 import json
+import socket
+import threading
 from pathlib import Path
 
 from rmtask.config import Settings
@@ -189,6 +191,58 @@ class PipelineResilienceTest(unittest.TestCase):
         self.assertEqual(team["facts"]["Groups"], "1")
 
 
+class _MiniSMTP:
+    """Minimal loopback SMTP server that captures the DATA payload."""
+
+    def __init__(self) -> None:
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.port = self.sock.getsockname()[1]
+        self.sock.listen(1)
+        self.received: list[bytes] = []
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def _serve(self) -> None:
+        conn, _ = self.sock.accept()
+        f = conn.makefile("rb")
+        conn.sendall(b"220 localhost ESMTP test\r\n")
+        data_mode = False
+        buf = b""
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            if data_mode:
+                if line == b".\r\n":
+                    self.received.append(buf)
+                    buf = b""
+                    data_mode = False
+                    conn.sendall(b"250 OK queued\r\n")
+                else:
+                    buf += line
+                continue
+            cmd = line.decode(errors="replace").strip().upper()
+            if cmd.startswith(("EHLO", "HELO")):
+                conn.sendall(b"250-localhost\r\n250 OK\r\n")
+            elif cmd.startswith("MAIL FROM") or cmd.startswith("RCPT TO"):
+                conn.sendall(b"250 OK\r\n")
+            elif cmd.startswith("DATA"):
+                data_mode = True
+                conn.sendall(b"354 End data with <CR><LF>.<CR><LF>\r\n")
+            elif cmd.startswith("QUIT"):
+                conn.sendall(b"221 Bye\r\n")
+                break
+            else:
+                conn.sendall(b"250 OK\r\n")
+        conn.close()
+
+    def close(self) -> None:
+        self.sock.close()
+
+
 class EmailerTest(unittest.TestCase):
     def _settings(self, **kw) -> Settings:
         base = dict(
@@ -221,6 +275,30 @@ class EmailerTest(unittest.TestCase):
         msg = inst.send_message.call_args.args[0]
         self.assertEqual(msg["Subject"], "Subject")
         self.assertEqual(msg["To"], "a@x.com")
+
+    def test_email_smtp_end_to_end(self) -> None:
+        try:
+            probe = socket.socket()
+            probe.close()
+        except OSError:
+            self.skipTest("loopback sockets unavailable in this sandbox")
+        server = _MiniSMTP()
+        server.start()
+        try:
+            settings = Settings(
+                mode="live", email_from="rm@x.com", email_to=["a@x.com"],
+                smtp_host="127.0.0.1", smtp_port=server.port,
+                smtp_starttls=False, smtp_ssl=False, smtp_user="", smtp_password="",
+            )
+            status = Emailer(settings).send("Subject here", "<b>Hi</b>", "Hi")
+        finally:
+            server.close()
+        self.assertEqual(status, "sent")
+        raw = server.received[0]
+        self.assertIn(b"Subject: Subject here", raw)
+        self.assertIn(b"From: rm@x.com", raw)
+        self.assertIn(b"To: a@x.com", raw)
+        self.assertIn(b"<b>Hi</b>", raw)
 
     def test_send_includes_owner_email(self) -> None:
         from unittest import mock
