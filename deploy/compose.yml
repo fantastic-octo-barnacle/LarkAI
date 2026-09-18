@@ -9,7 +9,7 @@ services:
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:?A random Flask secret is required}
       FEISHU_MODE: live
       RM_DB_PATH: /app/data/rmtask.db
-      RM_AUTO_COLLECT_SECONDS: '0'
+      RM_AUTO_COLLECT_SECONDS: ${RM_AUTO_COLLECT_SECONDS:-300}
     volumes:
       - data:/app/data
     networks:
