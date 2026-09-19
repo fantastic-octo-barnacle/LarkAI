@@ -1,15 +1,17 @@
+import { usePreferences } from "../preferences";
 import type { Notification } from "../types";
 import { useData } from "../useData";
 import { formatDate } from "../api";
 import { Heading, Load, Empty, Badge } from "../components";
 
 export function NotificationsPage({ revision }: { revision: number }) {
+  const { t, locale } = usePreferences();
   const state = useData<Notification[]>("/notifications", revision);
   return (
     <>
       <Heading
-        title="Notifications"
-        description="A delivery log for task changes and team updates."
+        title={t("Notifications")}
+        description={t("A delivery log for task changes and team updates.")}
       />
       <Load state={state}>
         {(rows) => (
@@ -21,8 +23,8 @@ export function NotificationsPage({ revision }: { revision: number }) {
                     <div>
                       <strong>{n.subject}</strong>
                       <small>
-                        {formatDate(n.created_at)} ·{" "}
-                        {n.recipients || "No recipients"}
+                        {formatDate(n.created_at, locale)} ·{" "}
+                        {n.recipients || t("No recipients")}
                       </small>
                     </div>
                     <Badge value={n.status} />
@@ -32,7 +34,7 @@ export function NotificationsPage({ revision }: { revision: number }) {
                 </details>
               ))
             ) : (
-              <Empty>No notifications yet.</Empty>
+              <Empty>{t("No notifications yet.")}</Empty>
             )}
           </section>
         )}

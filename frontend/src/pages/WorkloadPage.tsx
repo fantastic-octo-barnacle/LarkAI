@@ -1,35 +1,48 @@
+import { usePreferences } from "../preferences";
 import type { Workload } from "../types";
 import { useData } from "../useData";
 import { Heading, Load, Empty, Badge, TaskSummary } from "../components";
 
 export function WorkloadPage({ revision }: { revision: number }) {
+  const { t } = usePreferences();
   const state = useData<Workload>("/workload", revision);
   return (
     <>
       <Heading
-        title="Team workload"
-        description="See who’s working on what, and where help is needed."
+        title={t("Team workload")}
+        description={t("See who’s working on what, and where help is needed.")}
       />
       <Load state={state}>
         {(d) => (
           <>
             <p className="muted">
-              {d.members.length} team members · {d.unassigned} unassigned tasks
+              {t("{count} team members · {unassigned} unassigned tasks", {
+                count: d.members.length,
+                unassigned: d.unassigned,
+              })}
             </p>
             <div className="workload-grid">
               {d.members.map((m) => (
                 <section className="panel" key={m.id}>
                   <div className="panel-title">
                     <h2>{m.name}</h2>
-                    <Badge value={`${m.active} active`} />
+                    <Badge value={t("{count} active", { count: m.active })} />
                   </div>
                   <div className="workload-stats">
-                    <span>{m.stats.pending} pending</span>
-                    <span>{m.stats.completed} done</span>
-                    <span>{m.stats.overdue} overdue</span>
+                    <span>
+                      {t("{count} pending", { count: m.stats.pending })}
+                    </span>
+                    <span>
+                      {t("{count} done", { count: m.stats.completed })}
+                    </span>
+                    <span>
+                      {t("{count} overdue", { count: m.stats.overdue })}
+                    </span>
                   </div>
                   <details>
-                    <summary>View {m.tasks.length} tasks</summary>
+                    <summary>
+                      {t("View {count} tasks", { count: m.tasks.length })}
+                    </summary>
                     {m.tasks.map((t) => (
                       <TaskSummary key={t.id} task={t} />
                     ))}
@@ -38,7 +51,9 @@ export function WorkloadPage({ revision }: { revision: number }) {
               ))}
             </div>
             {!d.members.length && (
-              <Empty>Assigned tasks will appear here after a sync.</Empty>
+              <Empty>
+                {t("Assigned tasks will appear here after a sync.")}
+              </Empty>
             )}
           </>
         )}

@@ -1,3 +1,4 @@
+import { usePreferences } from "../preferences";
 import { useState } from "react";
 import { Plus, Search, Clock3, Users, Check, X, Trash2 } from "lucide-react";
 import type { Task, Member, PageProps } from "../types";
@@ -7,6 +8,7 @@ import { Heading, Load, Empty, Badge, LinkOut } from "../components";
 import { TaskForm } from "./TaskForm";
 
 export function TasksPage({ session, revision, mutate, busy }: PageProps) {
+  const { t: translate, locale } = usePreferences();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [group, setGroup] = useState("status");
@@ -27,12 +29,12 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
   return (
     <>
       <Heading
-        title="Task board"
-        description="Turn team priorities into progress."
+        title={translate("Task board")}
+        description={translate("Turn team priorities into progress.")}
       >
         <button className="primary" onClick={() => setCreating(!creating)}>
           <Plus size={17} />
-          {creating ? "Close form" : "New task"}
+          {creating ? translate("Close form") : translate("New task")}
         </button>
       </Heading>
       <Load state={state}>
@@ -73,18 +75,18 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                 <div className="search">
                   <Search size={17} />
                   <input
-                    aria-label="Search tasks"
-                    placeholder="Search tasks…"
+                    aria-label={translate("Search tasks")}
+                    placeholder={translate("Search tasks…")}
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                   />
                 </div>
                 <select
-                  aria-label="Filter status"
+                  aria-label={translate("Filter status")}
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                 >
-                  <option value="">All statuses</option>
+                  <option value="">{translate("All statuses")}</option>
                   {[
                     "pending",
                     "in_progress",
@@ -92,31 +94,37 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                     "cancelled",
                     "paused",
                   ].map((s) => (
-                    <option key={s}>{s}</option>
+                    <option key={s} value={s}>
+                      {translate(s)}
+                    </option>
                   ))}
                 </select>
                 <select
-                  aria-label="Group tasks"
+                  aria-label={translate("Group tasks")}
                   value={group}
                   onChange={(e) => setGroup(e.target.value)}
                 >
                   {["status", "division", "source", "none"].map((s) => (
                     <option key={s} value={s}>
-                      Group: {s}
+                      {translate("Group:")} {translate(s)}
                     </option>
                   ))}
                 </select>
               </div>
               {!tasks.length && (
                 <Empty>
-                  No tasks match. Create a task or sync Feishu to get started.
+                  {translate(
+                    "No tasks match. Create a task or sync Feishu to get started.",
+                  )}
                 </Empty>
               )}
               <div className="task-groups">
                 {Object.entries(groups).map(([label, items]) => (
                   <section className="task-group" key={label}>
                     <h2>
-                      {label.replaceAll("_", " ")}{" "}
+                      {translate(label) === label
+                        ? label.replaceAll("_", " ")
+                        : translate(label)}{" "}
                       <span className="count">{items.length}</span>
                     </h2>
                     {items.map((t) => (
@@ -131,12 +139,12 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                         <div className="task-info">
                           <span>
                             <Clock3 size={14} />
-                            {formatDate(t.due)}
+                            {formatDate(t.due, locale)}
                           </span>
                           <span>
                             <Users size={14} />
                             {t.owners.map((m) => m.name || m.id).join(", ") ||
-                              "Unassigned"}
+                              translate("Unassigned")}
                           </span>
                           {!!t.divisions.length && (
                             <span>{t.divisions.join(" · ")}</span>
@@ -156,7 +164,7 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                                 }
                               >
                                 <Check size={14} />
-                                Complete
+                                {translate("Complete")}
                               </button>
                               <button
                                 disabled={busy}
@@ -167,7 +175,7 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                                 }
                               >
                                 <X size={14} />
-                                Cancel
+                                {translate("Cancel")}
                               </button>
                             </>
                           )}
@@ -186,16 +194,18 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                                       setConfirm(undefined);
                                   }}
                                 >
-                                  Confirm delete
+                                  {translate("Confirm delete")}
                                 </button>
                                 <button onClick={() => setConfirm(undefined)}>
-                                  Keep
+                                  {translate("Keep")}
                                 </button>
                               </>
                             ) : (
                               <button
                                 className="icon-button"
-                                aria-label={`Delete ${t.title}`}
+                                aria-label={translate("Delete {title}", {
+                                  title: t.title,
+                                })}
                                 onClick={() => setConfirm(t.id)}
                               >
                                 <Trash2 size={14} />

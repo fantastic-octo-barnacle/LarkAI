@@ -1,3 +1,4 @@
+import { usePreferences } from "../preferences";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Plus } from "lucide-react";
@@ -14,6 +15,7 @@ export function TaskForm({
   submit: (body: unknown) => Promise<boolean>;
   busy: boolean;
 }) {
+  const { t } = usePreferences();
   const [q, setQ] = useState("");
   const [owners, setOwners] = useState<string[]>([]);
   const [divisions, setDivisions] = useState<string[]>([]);
@@ -41,41 +43,47 @@ export function TaskForm({
   }
   return (
     <form className="task-form" onSubmit={onSubmit}>
-      <h2>Create a task</h2>
+      <h2>{t("Create a task")}</h2>
       <label>
-        Title
+        {t("Title")}
         <input
           name="title"
           required
           maxLength={500}
-          placeholder="What needs to be done?"
+          placeholder={t("What needs to be done?")}
         />
       </label>
       <label>
-        Description
+        {t("Description")}
         <textarea
           name="description"
           rows={3}
-          placeholder="Context, requirements, and expected outcome"
+          placeholder={t("Context, requirements, and expected outcome")}
         />
       </label>
       <div className="form-grid">
         <label>
-          Due date
+          {t("Due date")}
           <input type="datetime-local" name="due" />
         </label>
         <label>
-          Priority
-          <select aria-label="Priority" name="priority" defaultValue="NORMAL">
+          {t("Priority")}
+          <select
+            aria-label={t("Priority")}
+            name="priority"
+            defaultValue="NORMAL"
+          >
             {["LOW", "NORMAL", "MEDIUM", "HIGH", "URGENT"].map((p) => (
-              <option key={p}>{p}</option>
+              <option key={p} value={p}>
+                {t(p)}
+              </option>
             ))}
           </select>
         </label>
         <label>
-          Category
-          <select aria-label="Category" name="category">
-            <option value="">Choose a category</option>
+          {t("Category")}
+          <select aria-label={t("Category")} name="category">
+            <option value="">{t("Choose a category")}</option>
             {options.categories.map((c) => (
               <option key={c}>{c}</option>
             ))}
@@ -83,7 +91,7 @@ export function TaskForm({
         </label>
       </div>
       <fieldset>
-        <legend>Divisions</legend>
+        <legend>{t("Divisions")}</legend>
         <div className="chips">
           {options.divisions.map((d) => (
             <label key={d}>
@@ -102,10 +110,12 @@ export function TaskForm({
         </div>
       </fieldset>
       <fieldset>
-        <legend>Assignees · {owners.length || "yourself by default"}</legend>
+        <legend>
+          {t("Assignees ·")} {owners.length || t("yourself by default")}
+        </legend>
         <input
-          aria-label="Search assignees"
-          placeholder="Search members…"
+          aria-label={t("Search assignees")}
+          placeholder={t("Search members…")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -131,11 +141,11 @@ export function TaskForm({
         </div>
       </fieldset>
       <label>
-        Remark
+        {t("Remark")}
         <input name="remark" />
       </label>
       <button disabled={busy} className="primary">
-        <Plus size={16} /> {busy ? "Creating…" : "Create task"}
+        <Plus size={16} /> {busy ? t("Creating…") : t("Create task")}
       </button>
     </form>
   );

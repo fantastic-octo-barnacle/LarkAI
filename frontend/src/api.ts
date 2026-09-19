@@ -50,12 +50,12 @@ export async function api<T>(
     );
   return body as T;
 }
-export function formatDate(value: string) {
-  if (!value) return "No date";
+export function formatDate(value: string, locale = "en") {
+  if (!value) return locale.startsWith("zh") ? "无日期" : "No date";
   const date = new Date(value);
   return Number.isNaN(date.valueOf())
     ? value
-    : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    : date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
 }
 export function safeUrl(value: string) {
   try {

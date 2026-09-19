@@ -1,3 +1,4 @@
+import { PreferenceControls, usePreferences } from "./preferences";
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import {
@@ -34,6 +35,7 @@ const nav = [
   ["/diagnostics", "Diagnostics", Activity],
 ] as const;
 export default function App() {
+  const { t } = usePreferences();
   const [revision, setRevision] = useState(0);
   const [session, setSession] = useState<Session>();
   const [error, setError] = useState<Error>();
@@ -82,13 +84,14 @@ export default function App() {
   if (!session)
     return (
       <main className="startup">
+        <PreferenceControls />
         {error ? (
           <>
             <ErrorBox error={error} />
-            <button onClick={loadSession}>Retry</button>
+            <button onClick={loadSession}>{t("Retry")}</button>
           </>
         ) : (
-          <div className="loading">Opening your workspace…</div>
+          <div className="loading">{t("Opening your workspace…")}</div>
         )}
       </main>
     );
@@ -102,10 +105,10 @@ export default function App() {
             <Bot size={24} />
           </span>
           <div>
-            RM Hub<small>RESEARCH WORKSPACE</small>
+            RM Hub<small>{t("RESEARCH WORKSPACE")}</small>
           </div>
         </NavLink>
-        <div className="nav-label">WORKSPACE</div>
+        <div className="nav-label">{t("WORKSPACE")}</div>
         <nav>
           {nav
             .filter(
@@ -114,15 +117,15 @@ export default function App() {
             .map(([path, label, Icon]) => (
               <NavLink end={path === "/"} to={path} key={path}>
                 <Icon size={18} />
-                {label}
+                {t(label)}
               </NavLink>
             ))}
         </nav>
         <div className="sidebar-bottom">
           <span className="status-dot" />
           {session.mode === "mock"
-            ? "Local workspace"
-            : "Feishu connected workspace"}
+            ? t("Local workspace")
+            : t("Feishu connected workspace")}
           <small>{session.team_name}</small>
         </div>
       </aside>
@@ -130,15 +133,16 @@ export default function App() {
         <header className="topbar">
           <button
             className="mobile-menu icon-button"
-            aria-label="Toggle navigation"
+            aria-label={t("Toggle navigation")}
             onClick={() => setMenu(!menu)}
           >
             <Menu size={22} />
           </button>
           <span className="workspace-label">
-            RoboMaster <span>/</span> Research
+            RoboMaster <span>/</span> {t("Research")}
           </span>
           <div className="topbar-actions">
+            <PreferenceControls />
             {admin && (
               <>
                 <button
@@ -146,11 +150,11 @@ export default function App() {
                   onClick={() => void mutate("/members/refresh")}
                 >
                   <Users size={15} />
-                  Members
+                  {t("Members")}
                 </button>
                 <button disabled={busy} onClick={() => void mutate("/sync")}>
                   <RefreshCw className={busy ? "spin" : ""} size={15} />
-                  Sync
+                  {t("Sync")}
                 </button>
               </>
             )}
@@ -159,7 +163,9 @@ export default function App() {
                 className="button primary"
                 href={`/auth/feishu?next=${encodeURIComponent(location.pathname)}`}
               >
-                {session.mode === "mock" ? "Demo login" : "Connect Feishu"}
+                {session.mode === "mock"
+                  ? t("Demo login")
+                  : t("Connect Feishu")}
               </a>
             )}
             {session.user && (
@@ -167,7 +173,7 @@ export default function App() {
                 <span className="user-name">{session.user.name}</span>
                 <button
                   className="icon-button"
-                  aria-label="Sign out"
+                  aria-label={t("Sign out")}
                   onClick={async () => {
                     if (await mutate("/logout"))
                       window.location.href = session.oidc ? "/oidc/login" : "/";
@@ -182,13 +188,13 @@ export default function App() {
         <main>
           {session.mode === "mock" && (
             <div className="demo-banner">
-              Local demo · Task changes stay in this workspace.
+              {t("Local demo · Task changes stay in this workspace.")}
             </div>
           )}
           {error && <ErrorBox error={error} />}{" "}
           {!!message && (
             <div className="notice" role="status">
-              {message}
+              {t(message)}
             </div>
           )}
           <Routes>
@@ -215,12 +221,13 @@ export default function App() {
               path="*"
               element={
                 <Empty>
-                  Page not found. <NavLink to="/">Return to overview</NavLink>
+                  {t("Page not found.")}{" "}
+                  <NavLink to="/">{t("Return to overview")}</NavLink>
                 </Empty>
               }
             />
           </Routes>
-          <footer>RM Hub · Built for the work behind the robot.</footer>
+          <footer>{t("RM Hub · Built for the work behind the robot.")}</footer>
         </main>
       </div>
     </div>

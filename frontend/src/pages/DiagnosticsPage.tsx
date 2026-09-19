@@ -1,15 +1,17 @@
+import { usePreferences } from "../preferences";
 import { useData } from "../useData";
 import { Heading, Load, Badge } from "../components";
 
 export function DiagnosticsPage({ revision }: { revision: number }) {
+  const { t } = usePreferences();
   const state = useData<{
     checks: { name: string; ok: boolean; detail: string }[];
   }>("/diagnostics", revision);
   return (
     <>
       <Heading
-        title="Diagnostics"
-        description="Check the services behind your workspace."
+        title={t("Diagnostics")}
+        description={t("Check the services behind your workspace.")}
       />
       <Load state={state}>
         {(d) => (

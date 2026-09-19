@@ -1,3 +1,4 @@
+import { usePreferences } from "./preferences";
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { Bot, ArrowUpRight, ListTodo } from "lucide-react";
@@ -5,6 +6,7 @@ import { ApiError, safeUrl, formatDate } from "./api";
 import type { Stats, Task } from "./types";
 
 export function ErrorBox({ error }: { error: Error }) {
+  const { t } = usePreferences();
   const location = useLocation();
   if (error instanceof ApiError && [401, 428].includes(error.status))
     return (
@@ -12,18 +14,20 @@ export function ErrorBox({ error }: { error: Error }) {
         <Bot size={34} />
         <h2>
           {error.status === 428
-            ? "Connect your Feishu account"
-            : "Sign in to continue"}
+            ? t("Connect your Feishu account")
+            : t("Sign in to continue")}
         </h2>
         <p>
-          Your dashboard stays available. Connect Feishu to manage tasks and
-          sync your team.
+          {t(
+            "Your dashboard stays available. Connect Feishu to manage tasks and sync your team.",
+          )}
         </p>
         <a
           className="button primary"
           href={`${error.status === 401 ? "/auth/login" : "/auth/feishu"}?next=${encodeURIComponent(location.pathname)}`}
         >
-          Continue <ArrowUpRight size={16} />
+          {t("Continue")}
+          <ArrowUpRight size={16} />
         </a>
       </div>
     );
@@ -40,11 +44,12 @@ export function Load<T>({
   state: { data?: T; error?: Error };
   children: (data: T) => ReactNode;
 }) {
+  const { t } = usePreferences();
   return state.error ? (
     <ErrorBox error={state.error} />
   ) : state.data === undefined ? (
     <div className="loading" role="status">
-      Loading…
+      {t("Loading…")}
     </div>
   ) : (
     children(state.data)
@@ -59,16 +64,23 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 export function Badge({ value }: { value: string }) {
+  const { t } = usePreferences();
   return (
     <span className={`badge ${value.toLowerCase()}`}>
-      {value.replaceAll("_", " ")}
+      {t(value) === value ? value.replaceAll("_", " ") : t(value)}
     </span>
   );
 }
 export function LinkOut({ url }: { url: string }) {
+  const { t } = usePreferences();
   const href = safeUrl(url);
   return href ? (
-    <a href={href} target="_blank" rel="noreferrer" aria-label="Open in Feishu">
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={t("Open in Feishu")}
+    >
       <ArrowUpRight size={16} />
     </a>
   ) : null;
@@ -82,10 +94,11 @@ export function Heading({
   description: string;
   children?: ReactNode;
 }) {
+  const { t } = usePreferences();
   return (
     <div className="heading">
       <div>
-        <div className="eyebrow">TEAM WORKSPACE</div>
+        <div className="eyebrow">{t("TEAM WORKSPACE")}</div>
         <h1>{title}</h1>
         <p>{description}</p>
       </div>
@@ -94,6 +107,7 @@ export function Heading({
   );
 }
 export function StatsGrid({ stats }: { stats: Stats }) {
+  const { t } = usePreferences();
   return (
     <div className="stats">
       {[
@@ -103,7 +117,7 @@ export function StatsGrid({ stats }: { stats: Stats }) {
         ["Overdue", stats.overdue],
       ].map(([label, value], i) => (
         <div className={`stat stat-${i}`} key={label}>
-          <span>{label}</span>
+          <span>{t(String(label))}</span>
           <strong>{value}</strong>
           <div className="stat-line" />
         </div>
@@ -112,13 +126,14 @@ export function StatsGrid({ stats }: { stats: Stats }) {
   );
 }
 export function TaskSummary({ task }: { task: Task }) {
+  const { t, locale } = usePreferences();
   return (
     <div className="row">
       <div>
         <strong>{task.title}</strong>
         <small>
-          {task.owners.map((m) => m.name || m.id).join(", ") || "Unassigned"} ·{" "}
-          {formatDate(task.due)}
+          {task.owners.map((m) => m.name || m.id).join(", ") || t("Unassigned")}{" "}
+          · {formatDate(task.due, locale)}
         </small>
       </div>
       <Badge value={task.priority} />

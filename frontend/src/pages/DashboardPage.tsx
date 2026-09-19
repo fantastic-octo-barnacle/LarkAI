@@ -1,3 +1,4 @@
+import { usePreferences } from "../preferences";
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
@@ -15,14 +16,15 @@ import {
 } from "../components";
 
 export function DashboardPage({ revision }: { revision: number }) {
+  const { t, locale } = usePreferences();
   const state = useData<Dashboard>("/dashboard", revision);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   return (
     <>
       <Heading
-        title="Team overview"
-        description="The work ahead, and the updates that matter."
+        title={t("Team overview")}
+        description={t("The work ahead, and the updates that matter.")}
       />
       <Load state={state}>
         {(d) => (
@@ -31,9 +33,10 @@ export function DashboardPage({ revision }: { revision: number }) {
             <div className="columns">
               <section className="panel">
                 <div className="panel-title">
-                  <h2>Upcoming deadlines</h2>
+                  <h2>{t("Upcoming deadlines")}</h2>
                   <NavLink to="/tasks">
-                    View tasks <ArrowUpRight size={14} />
+                    {t("View tasks")}
+                    <ArrowUpRight size={14} />
                   </NavLink>
                 </div>
                 {d.stats.next_deadlines.length ? (
@@ -42,15 +45,16 @@ export function DashboardPage({ revision }: { revision: number }) {
                   ))
                 ) : (
                   <Empty>
-                    No upcoming deadlines. New tasks will appear here.
+                    {t("No upcoming deadlines. New tasks will appear here.")}
                   </Empty>
                 )}
               </section>
               <section className="panel">
                 <div className="panel-title">
-                  <h2>Important updates</h2>
+                  <h2>{t("Important updates")}</h2>
                   <NavLink to="/timeline">
-                    Timeline <ArrowUpRight size={14} />
+                    {t("Timeline")}
+                    <ArrowUpRight size={14} />
                   </NavLink>
                 </div>
                 {d.important.length ? (
@@ -59,14 +63,14 @@ export function DashboardPage({ revision }: { revision: number }) {
                       <div>
                         <Badge value={e.source} />
                         <strong>{e.title}</strong>
-                        <small>{formatDate(e.ts)}</small>
+                        <small>{formatDate(e.ts, locale)}</small>
                       </div>
                       <LinkOut url={e.url} />
                     </div>
                   ))
                 ) : (
                   <Empty>
-                    Sync Feishu to bring your team’s updates together.
+                    {t("Sync Feishu to bring your team’s updates together.")}
                   </Empty>
                 )}
               </section>
@@ -74,12 +78,12 @@ export function DashboardPage({ revision }: { revision: number }) {
             <section className="panel">
               <div className="panel-title">
                 <h2>
-                  Team directory{" "}
+                  {t("Team directory")}{" "}
                   <span className="count">{d.members.length}</span>
                 </h2>
                 <input
-                  aria-label="Search members"
-                  placeholder="Find a teammate…"
+                  aria-label={t("Search members")}
+                  placeholder={t("Find a teammate…")}
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                 />
@@ -111,11 +115,11 @@ export function DashboardPage({ revision }: { revision: number }) {
                   ))}
               </div>
               {!d.members.length && (
-                <Empty>Refresh members to populate the directory.</Empty>
+                <Empty>{t("Refresh members to populate the directory.")}</Empty>
               )}
               {!!selected.length && (
                 <textarea
-                  aria-label="Selected members"
+                  aria-label={t("Selected members")}
                   readOnly
                   value={d.members
                     .filter((m) => selected.includes(m.id))
@@ -126,7 +130,7 @@ export function DashboardPage({ revision }: { revision: number }) {
             </section>
             {d.sync && (
               <p className="muted">
-                Last synced {formatDate(d.sync.last_sync)}
+                {t("Last synced")} {formatDate(d.sync.last_sync, locale)}
                 {d.sync.warnings.map((w) => (
                   <span className="notice" key={w}>
                     {w}

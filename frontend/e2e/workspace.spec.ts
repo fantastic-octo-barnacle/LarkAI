@@ -93,3 +93,74 @@ test("startup bundles session and page data without loading unopened task form o
   ).toBeVisible();
   expect(requests).toEqual(["/api/bootstrap"]);
 });
+
+test("theme and language persist while task drafts and API values stay intact", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/auth/feishu?next=/tasks");
+  await page.getByRole("button", { name: "New task" }).click();
+  await page.getByLabel("Title", { exact: true }).fill("Bilingual draft");
+  await page.getByRole("button", { name: "Switch to dark mode" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator(".topbar")).toHaveCSS(
+    "background-color",
+    "rgb(28, 38, 55)",
+  );
+  await page.getByLabel("Language", { exact: true }).selectOption("zh");
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+  await expect(page.getByRole("heading", { name: "任务看板" })).toBeVisible();
+  await expect(page.getByLabel("标题", { exact: true })).toHaveValue(
+    "Bilingual draft",
+  );
+  await page.getByLabel("优先级", { exact: true }).selectOption("HIGH");
+  await expect(page.getByLabel("优先级", { exact: true })).toHaveValue("HIGH");
+  await page.getByLabel("筛选状态").selectOption("in_progress");
+  await expect(page.getByLabel("筛选状态")).toHaveValue("in_progress");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("heading", { name: "任务看板" })).toBeVisible();
+  await page.getByRole("link", { name: "概览", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "团队概览" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel("语言", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/dark-chinese-mobile.png",
+    animations: "disabled",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "切换至浅色模式" }).click();
+  await page.getByLabel("语言", { exact: true }).selectOption("en");
+  await expect(
+    page.getByRole("heading", { name: "Team overview" }),
+  ).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
+
+test("system dark mode works when browser storage is unavailable", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => {
+    Storage.prototype.getItem = () => {
+      throw new Error("Storage unavailable");
+    };
+    Storage.prototype.setItem = () => {
+      throw new Error("Storage unavailable");
+    };
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Team overview" }),
+  ).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.getByRole("button", { name: "Switch to light mode" }).click();
+  await page.getByLabel("Language", { exact: true }).selectOption("zh");
+  await expect(page.getByRole("heading", { name: "团队概览" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});
