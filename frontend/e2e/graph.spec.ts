@@ -125,6 +125,62 @@ test("task graph separates hierarchy, edits dependencies, rejects cycles and wor
     await page
       .getByRole("button", { name: "Close editor", exact: true })
       .click();
+    for (const [id, action] of [
+      [parent.id, "complete"],
+      [design.id, "cancel"],
+    ]) {
+      const response = await page.request.post(
+        `/api/tasks/${encodeURIComponent(id)}/${action}`,
+        { headers },
+      );
+      expect(response.ok()).toBeTruthy();
+    }
+    await page.reload();
+    const hideFinished = page.getByRole("checkbox", {
+      name: "Hide completed and cancelled",
+      exact: true,
+    });
+    await expect(
+      page.getByRole("heading", { name: "Test DAG project", exact: true }),
+    ).toBeVisible();
+    await hideFinished.check();
+    await expect(
+      page.getByRole("heading", { name: "Test DAG project", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Test Design", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
+    await expect(hideFinished).toBeChecked();
+    await page.getByLabel("Entire graph", { exact: true }).check();
+    for (const title of ["Test DAG project", "Test Design"]) {
+      await expect(
+        hierarchy.getByRole("button", { name: title, exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        graph.getByRole("button", { name: `Explore ${title}`, exact: true }),
+      ).toHaveCount(0);
+    }
+    await expect(
+      hierarchy.getByRole("button", { name: "Test Assembly", exact: true }),
+    ).toBeVisible();
+    await hideFinished.uncheck();
+    await graph
+      .getByRole("button", { name: "Explore Test Design", exact: true })
+      .click();
+    await hideFinished.check();
+    await expect(
+      page
+        .getByRole("complementary", { name: "Task details" })
+        .getByRole("heading", { name: "Test Design", exact: true }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Board", exact: true }).click();
+    await expect(hideFinished).toBeChecked();
+    await hideFinished.uncheck();
+    await expect(
+      page.getByRole("heading", { name: "Test Design", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Graph", exact: true }).click();
     await page
       .getByRole("button", { name: "Switch to dark mode", exact: true })
       .click();

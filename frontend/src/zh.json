@@ -136,6 +136,8 @@
   "Search tasks": "搜索任务",
   "Search tasks…": "搜索任务…",
   "Filter status": "筛选状态",
+  "Hide completed and cancelled": "隐藏已完成和已取消的任务",
+  "Linked tasks remain visible unless completed or cancelled tasks are hidden.": "保留关联任务，但隐藏已完成和已取消的任务时除外。",
   "All statuses": "所有状态",
   "Group tasks": "任务分组",
   "Group:": "分组：",

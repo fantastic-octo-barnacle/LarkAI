@@ -24,6 +24,7 @@ import {
 type Props = {
   tasks: Task[];
   visibleTasks: Task[];
+  hiddenTaskIds: Set<string>;
   selected?: string;
   select: (id: string) => void;
   busy: boolean;
@@ -32,6 +33,7 @@ type Props = {
 export function TaskGraph({
   tasks,
   visibleTasks,
+  hiddenTaskIds,
   selected,
   select,
   busy,
@@ -47,19 +49,30 @@ export function TaskGraph({
   const [zoom, setZoom] = useState(0.85);
   const [editing, setEditing] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
-  const task = index.byId.get(selected ?? "") ?? visibleTasks[0];
-  const scope = useMemo(
-    () =>
-      graphScope(
-        tasks,
-        task?.id ?? "",
-        upstream,
-        downstream,
-        all,
-        showHierarchy,
-      ),
-    [tasks, task?.id, upstream, downstream, all, showHierarchy],
-  );
+  const task =
+    (hiddenTaskIds.has(selected ?? "")
+      ? undefined
+      : index.byId.get(selected ?? "")) ?? visibleTasks[0];
+  const scope = useMemo(() => {
+    const result = graphScope(
+      tasks,
+      task?.id ?? "",
+      upstream,
+      downstream,
+      all,
+      showHierarchy,
+    );
+    for (const id of hiddenTaskIds) result.delete(id);
+    return result;
+  }, [
+    tasks,
+    task?.id,
+    upstream,
+    downstream,
+    all,
+    showHierarchy,
+    hiddenTaskIds,
+  ]);
   const layout = useMemo(
     () => graphLayout(tasks, scope, showHierarchy),
     [tasks, scope, showHierarchy],
@@ -91,6 +104,7 @@ export function TaskGraph({
       pending.push(...(index.byId.get(id)?.parent_ids ?? []));
     }
   }
+  for (const id of hiddenTaskIds) visible.delete(id);
   const rendered = new Set<string>();
   function tree(id: string, depth = 0): React.ReactNode {
     if (rendered.has(id) || !visible.has(id)) return null;
@@ -175,11 +189,12 @@ export function TaskGraph({
       seen.add(parent);
       const ancestor = index.byId.get(parent);
       if (!ancestor) break;
-      crumbs.unshift(ancestor);
+      if (!hiddenTaskIds.has(ancestor.id)) crumbs.unshift(ancestor);
       parent = parents(ancestor)[0];
     }
   }
   function links(ids: string[]) {
+    ids = ids.filter((id) => !hiddenTaskIds.has(id));
     return ids.length ? (
       <ul className="relationship-list">
         {ids.map((id) => (
@@ -201,20 +216,21 @@ export function TaskGraph({
       <p className="graph-muted">{t("None")}</p>
     );
   }
+  const cycleIds = [
+    ...new Set([...index.cycles, ...index.hierarchyCycles]),
+  ].filter((id) => !hiddenTaskIds.has(id));
   return (
     <>
-      {(index.cycles.size > 0 || index.hierarchyCycles.size > 0) && (
+      {cycleIds.length > 0 && (
         <div className="graph-warning" role="alert">
           {t(
             "Cycles detected. Review the highlighted tasks; these relationships are not a DAG.",
           )}{" "}
-          {[...new Set([...index.cycles, ...index.hierarchyCycles])].map(
-            (id) => (
-              <button key={id} onClick={() => choose(id)}>
-                {index.byId.get(id)?.title}
-              </button>
-            ),
-          )}
+          {cycleIds.map((id) => (
+            <button key={id} onClick={() => choose(id)}>
+              {index.byId.get(id)?.title}
+            </button>
+          ))}
         </div>
       )}
       <div className="task-workspace">
@@ -420,7 +436,9 @@ export function TaskGraph({
           </div>
           <div className="graph-footer">
             <span>
-              {t("Linked tasks remain visible when filters are applied.")}
+              {t(
+                "Linked tasks remain visible unless completed or cancelled tasks are hidden.",
+              )}
             </span>
             <div>
               <button

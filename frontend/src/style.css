@@ -590,6 +590,16 @@ textarea {
   margin: 0 0 22px;
   flex-wrap: wrap;
 }
+.task-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.task-filter-toggle input {
+  width: auto;
+  accent-color: var(--accent-text-0);
+}
 .toolbar .search {
   flex: 1;
   display: flex;

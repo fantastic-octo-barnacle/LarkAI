@@ -16,6 +16,7 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
   const [division, setDivision] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
+  const [hideFinished, setHideFinished] = useState(false);
   const [group, setGroup] = useState("status");
   const [creating, setCreating] = useState(false);
   const state = useData<Task[]>("/tasks?q=&status=", revision, true);
@@ -41,8 +42,18 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
       </Heading>
       <Load state={state}>
         {(allTasks) => {
+          const hiddenTaskIds = new Set(
+            allTasks
+              .filter(
+                (task) =>
+                  hideFinished &&
+                  ["completed", "cancelled"].includes(task.status),
+              )
+              .map((task) => task.id),
+          );
           const tasks = allTasks.filter(
             (task) =>
+              !hiddenTaskIds.has(task.id) &&
               (!status || task.status === status) &&
               (!division || task.divisions.includes(division)) &&
               `${task.title} ${task.description}`
@@ -139,6 +150,14 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                       <option key={name}>{name}</option>
                     ))}
                 </select>
+                <label className="task-filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={hideFinished}
+                    onChange={(e) => setHideFinished(e.target.checked)}
+                  />
+                  {translate("Hide completed and cancelled")}
+                </label>
                 {view === "board" && (
                   <select
                     aria-label={translate("Group tasks")}
@@ -163,6 +182,7 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
               {view === "graph" ? (
                 <TaskGraph
                   tasks={allTasks}
+                  hiddenTaskIds={hiddenTaskIds}
                   visibleTasks={tasks}
                   selected={selected}
                   select={setSelected}
