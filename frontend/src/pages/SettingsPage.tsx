@@ -1,3 +1,4 @@
+import { NavLink } from "react-router-dom";
 import { usePreferences } from "../preferences";
 import type { Settings, PageProps } from "../types";
 import { useData } from "../useData";
@@ -9,9 +10,23 @@ export function SettingsPage({ revision, mutate, busy }: PageProps) {
   return (
     <>
       <Heading
-        title={t("Settings")}
-        description={t("Manage notification delivery for your team.")}
+        title={t("Administration")}
+        description={t("Connections, delivery, and workspace health.")}
       />
+      <div className="admin-links">
+        <button disabled={busy} onClick={() => void mutate("/members/refresh")}>
+          {t("Refresh members")}
+        </button>
+        <button disabled={busy} onClick={() => void mutate("/sync")}>
+          {t("Sync")}
+        </button>
+        <NavLink className="button" to="/notifications">
+          {t("Email delivery log")}
+        </NavLink>
+        <NavLink className="button" to="/diagnostics">
+          {t("Diagnostics")}
+        </NavLink>
+      </div>
       <section className="panel settings">
         <h2>{t("Feishu connection")}</h2>
         <p>

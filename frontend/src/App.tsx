@@ -4,12 +4,8 @@ import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   ListTodo,
-  Clock3,
   Users,
-  Bell,
   Settings2,
-  Activity,
-  RefreshCw,
   LogOut,
   Bot,
   Menu,
@@ -26,13 +22,10 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { DiagnosticsPage } from "./pages/DiagnosticsPage";
 
 const nav = [
-  ["/", "Overview", LayoutDashboard],
-  ["/tasks", "Tasks", ListTodo],
-  ["/timeline", "Timeline", Clock3],
-  ["/workload", "Workload", Users],
-  ["/notifications", "Notifications", Bell],
-  ["/settings", "Settings", Settings2],
-  ["/diagnostics", "Diagnostics", Activity],
+  ["/", "My Tasks", ListTodo],
+  ["/tasks", "Team tasks", Users],
+  ["/overview", "Team overview", LayoutDashboard],
+  ["/settings", "Administration", Settings2],
 ] as const;
 export default function App() {
   const { t } = usePreferences();
@@ -71,7 +64,11 @@ export default function App() {
       });
       setRevision((r) => r + 1);
       setMessage(
-        result.warnings?.length ? result.warnings.join(" ") : "Changes saved.",
+        result.warnings?.length
+          ? result.warnings.join(" ")
+          : path === "/tasks"
+            ? "Task created. Find it in Team tasks or the assignee’s My Tasks."
+            : "Changes saved.",
       );
       return true;
     } catch (e) {
@@ -143,21 +140,6 @@ export default function App() {
           </span>
           <div className="topbar-actions">
             <PreferenceControls />
-            {admin && (
-              <>
-                <button
-                  disabled={busy}
-                  onClick={() => void mutate("/members/refresh")}
-                >
-                  <Users size={15} />
-                  {t("Members")}
-                </button>
-                <button disabled={busy} onClick={() => void mutate("/sync")}>
-                  <RefreshCw className={busy ? "spin" : ""} size={15} />
-                  {t("Sync")}
-                </button>
-              </>
-            )}
             {!session.connected && (
               <a
                 className="button primary"
@@ -198,8 +180,18 @@ export default function App() {
             </div>
           )}
           <Routes>
-            <Route path="/" element={<DashboardPage revision={revision} />} />
-            <Route path="/tasks" element={<TasksPage {...props} />} />
+            <Route
+              path="/"
+              element={<TasksPage key="mine" {...props} personal />}
+            />
+            <Route
+              path="/overview"
+              element={<DashboardPage revision={revision} />}
+            />
+            <Route
+              path="/tasks"
+              element={<TasksPage key="team" {...props} />}
+            />
             <Route
               path="/timeline"
               element={<TimelinePage revision={revision} />}

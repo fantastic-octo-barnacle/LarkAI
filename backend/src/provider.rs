@@ -586,6 +586,21 @@ pub async fn save_relationships(
     Ok(())
 }
 pub async fn action(app: &App, subject: &str, t: &mut Task, action: &str) -> anyhow::Result<()> {
+    let (status, label) = match action {
+        "complete" => ("completed", "已完成"),
+        "cancel" => ("cancelled", "已放弃"),
+        "start" => ("in_progress", "执行中"),
+        "pause" => ("paused", "暂停"),
+        "reopen" => ("pending", "待执行"),
+        "delete" => ("", ""),
+        _ => anyhow::bail!("Invalid task action"),
+    };
+    anyhow::ensure!(
+        !app.cfg.live()
+            || t.source == "bitable"
+            || ["complete", "cancel", "delete"].contains(&action),
+        "This task source only supports completion and cancellation in the workspace"
+    );
     if app.cfg.live() {
         anyhow::ensure!(
             t.source != "mock",
@@ -610,10 +625,10 @@ pub async fn action(app: &App, subject: &str, t: &mut Task, action: &str) -> any
                 app,
                 "FEISHU_BITABLE_STATUS_FIELD",
                 "任务状态（由技术组长验收）",
-            )] = json!(if action == "complete" {
-                "已完成"
+            )] = json!(if action == "reopen" {
+                app.cfg.value("FEISHU_BITABLE_DEFAULT_STATUS", "待执行")
             } else {
-                "已放弃"
+                label
             });
             ("PUT", Some(json!({"fields":f})))
         } else {
@@ -632,12 +647,7 @@ pub async fn action(app: &App, subject: &str, t: &mut Task, action: &str) -> any
             .execute(&app.db.0)
             .await?;
     } else {
-        t.status = if action == "complete" {
-            "completed"
-        } else {
-            "cancelled"
-        }
-        .into();
+        t.status = status.into();
         t.updated_at = now();
         app.db.put_task(t).await?;
     }

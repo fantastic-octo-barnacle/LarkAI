@@ -1410,3 +1410,268 @@ summary:focus-visible {
 .graph-legend i.legend-hierarchy {
   border-top: 2px dashed var(--accent-text-2);
 }
+
+/* Member-first workspace: compact work lists and actionable team summaries. */
+.work-summary {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  padding: 22px 26px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-0);
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.work-summary > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.work-summary strong {
+  font-size: 26px;
+  letter-spacing: -1px;
+}
+.work-summary span {
+  color: var(--muted-3);
+  font-size: 12px;
+}
+.work-summary > a {
+  margin-left: auto;
+  font-size: 12px;
+}
+.personal-tasks {
+  display: block;
+}
+.personal-tasks .task-group {
+  background: transparent;
+  padding: 0;
+}
+.personal-tasks .task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 24px;
+  padding: 22px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+.personal-tasks .card-meta {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
+}
+.personal-tasks .card-meta > a {
+  margin-left: auto;
+}
+.personal-tasks .task-card h3,
+.personal-tasks .task-card > p,
+.personal-tasks .task-info {
+  grid-column: 1;
+  margin: 0;
+}
+.personal-tasks .task-card > p {
+  max-width: 75ch;
+}
+.personal-tasks .card-actions {
+  grid-column: 2;
+  grid-row: 2 / span 4;
+  align-self: center;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.card-actions select {
+  max-width: 160px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border-0);
+  background: var(--surface-0);
+  color: var(--foreground-0);
+}
+.overdue-label {
+  color: var(--danger-text-0);
+  font-size: 11px;
+  font-weight: 600;
+}
+.team-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.team-progress h2 {
+  font-size: 26px;
+  margin: 10px 0;
+}
+.team-progress p {
+  color: var(--muted-3);
+  margin: 0;
+}
+.progress-track {
+  width: 32%;
+  display: grid;
+  gap: 12px;
+}
+.progress-track strong {
+  font-size: 28px;
+  text-align: right;
+}
+.progress-track progress {
+  width: 100%;
+  accent-color: var(--accent-text-0);
+  height: 9px;
+}
+.attention-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.attention-card {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 12px;
+  border: 1px solid var(--border-0);
+  background: var(--surface-0);
+  color: var(--foreground-0);
+}
+.attention-card:hover,
+.ownership-card:hover,
+.attention-row:hover {
+  background: var(--hover-0);
+}
+.attention-card > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.attention-card > strong {
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+.attention-card > small {
+  color: var(--muted-3);
+}
+.attention-overdue > strong {
+  color: var(--danger-text-0);
+}
+.attention-blocked > strong {
+  color: var(--warning-text-0);
+}
+.overview-columns {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 24px;
+}
+.attention-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 17px 0;
+  border-top: 1px solid var(--border-1);
+  color: var(--foreground-0);
+}
+.attention-row strong,
+.ownership-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.attention-row small,
+.ownership-card small {
+  display: block;
+  color: var(--muted-3);
+  margin-top: 6px;
+  font-size: 11px;
+}
+.attention-row .badge {
+  flex-shrink: 0;
+}
+.ownership-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.ownership-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  color: var(--foreground-0);
+}
+.ownership-card > div {
+  flex: 1;
+  min-width: 0;
+}
+.admin-links {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.badge.blocked {
+  background: var(--warning-soft-0);
+  color: var(--warning-text-0);
+}
+@media (max-width: 1100px) {
+  .work-summary {
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .overview-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .ownership-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .personal-tasks .card-actions {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 600px) {
+  .attention-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .attention-card {
+    padding: 16px;
+  }
+  .ownership-grid {
+    grid-template-columns: 1fr;
+  }
+  .work-summary {
+    padding: 16px;
+    gap: 18px;
+  }
+  .work-summary > div {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .work-summary > a {
+    width: 100%;
+    margin-left: 0;
+  }
+  .personal-tasks .task-card {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+  }
+  .personal-tasks .card-actions {
+    align-self: stretch;
+  }
+  .team-progress h2 {
+    font-size: 22px;
+  }
+  .panel-title {
+    flex-wrap: wrap;
+  }
+}
+
+.badge.overdue {
+  background: var(--danger-soft-0);
+  color: var(--danger-text-0);
+}

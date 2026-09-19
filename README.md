@@ -1,6 +1,6 @@
 # RoboMaster Research Hub
 
-A Rust/Axum API and React/TypeScript frontend built with Vite. The hub collects Feishu tasks, Bitable records and calendar events, and provides a dashboard, timeline, task board, workload view, member directory and email delivery log.
+A Rust/Axum API and React/TypeScript frontend built with Vite. The hub collects Feishu tasks, Bitable records and calendar events, and provides a member task workspace, team task board and dependency graph, and an actionable team overview.
 
 This is a clean rewrite. It creates `data/larkai.sqlite3`; old Flask databases, sessions, routes and mock JSON files are not migrated. Sign in, connect Feishu, refresh members and sync to rebuild the workspace.
 
@@ -30,7 +30,7 @@ Set `FEISHU_MODE=live`, `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_REDIRECT_U
 
 Production uses Herkules OIDC for website sign-in and a separate Feishu connection linked to the immutable OIDC subject. Herkules UserInfo controls admin roles. Without OIDC, `FEISHU_ADMIN_OPEN_IDS` controls admins; if unset, the first Feishu login becomes admin.
 
-Dashboard, timeline and workload are shared team views. Task actions require a connected account. Sync, member refresh, diagnostics, settings and deletion additionally require admin access. When OIDC is configured, every protected request validates the signed identity and the server-side role established at sign-in. Optional Cloudflare Access JWT verification remains supported.
+Team Overview is the shared team view. My Tasks is the default landing page and matches assignments to the connected Feishu identity. Members can create tasks for anyone and update supported statuses directly. Task actions require a connected account. Sync, member refresh, diagnostics, settings and deletion additionally require admin access. When OIDC is configured, every protected request validates the signed identity and the server-side role established at sign-in. Optional Cloudflare Access JWT verification remains supported.
 
 ## Checks
 
@@ -74,6 +74,15 @@ deploy/            Docker Compose and deployment helpers
 
 OIDC sign-in validates the provider ID token and checks UserInfo once to obtain the current role. Requests then validate that ID token locally against cached signing keys; tokens stay in the server-side session, behind an HttpOnly cookie. Discovery and JWKS caches last five minutes. Unknown keys trigger a refresh at most once per 30 seconds. Signature, issuer, audience, subject and expiry remain enforced. Sessions are capped at 15 minutes and the token expiry, so role changes and account disabling take effect at the next sign-in within that window. Existing sessions without an ID token must sign in again after upgrading.
 
-Feishu authorization always requests `contact:contact.base:readonly` and `base:field:read` in addition to `FEISHU_SCOPES`. Enable these **user** permissions in the Feishu app console and publish/approve the app configuration if required by the tenant, then use **Settings → Reconnect Feishu** to grant them. Updating the scope configuration does not expand an existing token’s grants. Directory visibility is still limited to the app/user’s permitted organization range. Collection uses pages of 50 and follows cursors; it retains the previous source data on failure.
+Feishu authorization always requests `contact:contact.base:readonly` and `base:field:read` in addition to `FEISHU_SCOPES`. Enable these **user** permissions in the Feishu app console and publish/approve the app configuration if required by the tenant, then use **Administration → Reconnect Feishu** to grant them. Updating the scope configuration does not expand an existing token’s grants. Directory visibility is still limited to the app/user’s permitted organization range. Collection uses pages of 50 and follows cursors; it retains the previous source data on failure.
 
 Message collection is disabled. Sync does not fetch chat history, and authorization filters message scopes out of `FEISHU_SCOPES`. Chat membership lookup remains available for the member directory.
+
+## V1 workspace
+
+- **My Tasks** (`/`): personal assignments, active work first, deadline/blocker counts, task creation and status updates. Finished tasks are hidden by default.
+- **Team tasks** (`/tasks`): team-wide search, division/status filters, board and dependency graph.
+- **Team overview** (`/overview`): completion progress, overdue/blocked/unassigned work, next-seven-day deadlines and per-person task summaries. Counts and rows link to filtered tasks or their graph context.
+- **Administration** (`/settings`): sync, directory refresh, Feishu reconnection, email settings, delivery log and diagnostics. Timeline and workload URLs remain available for existing links but are removed from primary navigation.
+
+Bitable and local tasks support pending, in progress, paused, completed and cancelled statuses. Native Feishu task-v2 records retain completion/cancellation controls; intermediate statuses are not offered for that source. Existing connection and administrator checks remain enforced.

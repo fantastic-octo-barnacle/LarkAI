@@ -338,11 +338,26 @@ async fn task_api_contract_keeps_priority_local_and_uses_milliseconds() {
 #[tokio::test]
 async fn bitable_actions_target_the_records_own_table() {
     let mut app = app().await;
+    let expected = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from([
+        "已放弃",
+        "执行中",
+        "暂停",
+        "待执行",
+        "已完成",
+    ])));
+    let labels = expected.clone();
     let upstream = Router::new().route(
         "/open-apis/bitable/v1/apps/base1/tables/table2/records/rec1",
-        axum::routing::put(|axum::Json(body): axum::Json<Value>| async move {
-            assert_eq!(body["fields"]["任务状态（由技术组长验收）"], "已放弃");
-            axum::Json(json!({"code":0,"data":{}}))
+        axum::routing::put(move |axum::Json(body): axum::Json<Value>| {
+            let labels = labels.clone();
+            async move {
+                assert_eq!(body["fields"].as_object().unwrap().len(), 1);
+                assert_eq!(
+                    body["fields"]["任务状态（由技术组长验收）"],
+                    labels.lock().unwrap().pop_front().unwrap()
+                );
+                axum::Json(json!({"code":0,"data":{}}))
+            }
         }),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -373,6 +388,27 @@ async fn bitable_actions_target_the_records_own_table() {
         .await
         .unwrap();
     assert_eq!(t.status, "cancelled");
+    for (action, status) in [
+        ("start", "in_progress"),
+        ("pause", "paused"),
+        ("reopen", "pending"),
+        ("complete", "completed"),
+    ] {
+        provider::action(&app, "subject", &mut t, action)
+            .await
+            .unwrap();
+        assert_eq!(t.status, status);
+        assert_eq!(app.db.task(&t.id).await.unwrap().unwrap().status, status);
+    }
+    assert!(expected.lock().unwrap().is_empty());
+    // Source-limited statuses must fail before any upstream request or cache write.
+    t.source = "feishu".into();
+    assert!(
+        provider::action(&app, "subject", &mut t, "pause")
+            .await
+            .is_err()
+    );
+    assert_eq!(t.status, "completed");
     server.abort();
 }
 #[tokio::test]

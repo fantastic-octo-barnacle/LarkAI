@@ -42,7 +42,7 @@ export interface Stats {
   next_deadlines: Task[];
 }
 export interface Session {
-  user: { name: string; role: string } | null;
+  user: { name: string; role: string; open_id: string } | null;
   csrf_token: string;
   connected: boolean;
   mode: string;
@@ -55,6 +55,7 @@ export interface Sync {
   warnings: string[];
 }
 export interface Dashboard {
+  tasks: Task[];
   stats: Stats;
   important: Event[];
   members: Member[];

@@ -1,6 +1,13 @@
 import { usePreferences } from "../preferences";
 import { useState } from "react";
-import { Plus, Search, Clock3, Users, Check, X, Trash2 } from "lucide-react";
+import { useSearchParams, NavLink } from "react-router-dom";
+import {
+  activeTask,
+  overdueTask,
+  needsAttention,
+  taskOrder,
+} from "../taskView";
+import { Plus, Search, Clock3, Users, Trash2 } from "lucide-react";
 import type { Task, Member, PageProps } from "../types";
 import { useData } from "../useData";
 import { formatDate } from "../api";
@@ -9,15 +16,24 @@ import { TaskGraph } from "./TaskGraph";
 import { graphIndex, isBlocked } from "../taskGraph";
 import { TaskForm } from "./TaskForm";
 
-export function TasksPage({ session, revision, mutate, busy }: PageProps) {
+export function TasksPage({
+  session,
+  revision,
+  mutate,
+  busy,
+  personal = false,
+}: PageProps & { personal?: boolean }) {
   const { t: translate, locale } = usePreferences();
-  const [view, setView] = useState("board");
-  const [selected, setSelected] = useState<string>();
+  const [params, setParams] = useSearchParams();
+  const [view, setView] = useState(params.has("task") ? "graph" : "board");
+  const [selected, setSelected] = useState<string | undefined>(
+    params.get("task") || undefined,
+  );
   const [division, setDivision] = useState("");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const [hideFinished, setHideFinished] = useState(false);
-  const [group, setGroup] = useState("status");
+  const [hideFinished, setHideFinished] = useState(personal);
+  const [group, setGroup] = useState(personal ? "none" : "status");
   const [creating, setCreating] = useState(false);
   const state = useData<Task[]>("/tasks?q=&status=", revision, true);
   const members = useData<Member[]>(
@@ -32,8 +48,12 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
   return (
     <>
       <Heading
-        title={translate("Task board")}
-        description={translate("Turn team priorities into progress.")}
+        title={translate(personal ? "My Tasks" : "Team tasks")}
+        description={translate(
+          personal
+            ? "Your assignments, priorities, and next steps."
+            : "Find work across the team and see how it connects.",
+        )}
       >
         <button className="primary" onClick={() => setCreating(!creating)}>
           <Plus size={17} />
@@ -51,16 +71,31 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
               )
               .map((task) => task.id),
           );
-          const tasks = allTasks.filter(
+          const index = graphIndex(allTasks);
+          const scoped = personal
+            ? allTasks.filter(
+                (task) =>
+                  !!session.user?.open_id &&
+                  task.owners.some(
+                    (owner) => owner.id === session.user?.open_id,
+                  ),
+              )
+            : allTasks;
+          const tasks = scoped.filter(
             (task) =>
               !hiddenTaskIds.has(task.id) &&
+              (!params.get("owner") ||
+                task.owners.some(
+                  (owner) => owner.id === params.get("owner"),
+                )) &&
+              needsAttention(task, params.get("attention") || "", index.byId) &&
               (!status || task.status === status) &&
               (!division || task.divisions.includes(division)) &&
               `${task.title} ${task.description}`
                 .toLowerCase()
                 .includes(q.toLowerCase()),
           );
-          const index = graphIndex(allTasks);
+          tasks.sort(taskOrder);
           const groups: Record<string, Task[]> = {};
           tasks.forEach((t) => {
             const key =
@@ -75,6 +110,33 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
           });
           return (
             <>
+              <div className="work-summary">
+                <div>
+                  <strong>{scoped.filter(activeTask).length}</strong>
+                  <span>{translate("Active tasks")}</span>
+                </div>
+                <div>
+                  <strong>
+                    {scoped.filter((task) => overdueTask(task)).length}
+                  </strong>
+                  <span>{translate("Overdue")}</span>
+                </div>
+                <div>
+                  <strong>
+                    {
+                      scoped.filter((task) => isBlocked(task, index.byId))
+                        .length
+                    }
+                  </strong>
+                  <span>{translate("Blocked")}</span>
+                </div>
+                <NavLink to={personal ? "/tasks" : "/"}>
+                  {translate(
+                    personal ? "Browse team tasks" : "Back to my tasks",
+                  )}{" "}
+                  →
+                </NavLink>
+              </div>
               {creating && (
                 <section className="panel">
                   <Load state={members}>
@@ -85,7 +147,11 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                             members={m}
                             options={o}
                             busy={busy}
-                            submit={(body) => mutate("/tasks", body)}
+                            submit={async (body) => {
+                              const saved = await mutate("/tasks", body);
+                              if (saved) setCreating(false);
+                              return saved;
+                            }}
                           />
                         )}
                       </Load>
@@ -101,7 +167,7 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                   aria-pressed={view === "board"}
                   onClick={() => setView("board")}
                 >
-                  {translate("Board")}
+                  {translate(personal ? "List" : "Board")}
                 </button>
                 <button
                   aria-pressed={view === "graph"}
@@ -110,6 +176,14 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                   {translate("Graph")}
                 </button>
               </div>
+              {(params.has("attention") || params.has("owner")) && (
+                <div className="notice">
+                  {translate("Filtered from team overview")}{" "}
+                  <button onClick={() => setParams({})}>
+                    {translate("Clear filters")}
+                  </button>
+                </div>
+              )}
               <div className="toolbar">
                 <div className="search">
                   <Search size={17} />
@@ -123,7 +197,11 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                 <select
                   aria-label={translate("Filter status")}
                   value={status}
-                  onChange={(e) => setStatus(e.target.value)}
+                  onChange={(e) => {
+                    setStatus(e.target.value);
+                    if (["completed", "cancelled"].includes(e.target.value))
+                      setHideFinished(false);
+                  }}
                 >
                   <option value="">{translate("All statuses")}</option>
                   {[
@@ -154,11 +232,18 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                   <input
                     type="checkbox"
                     checked={hideFinished}
-                    onChange={(e) => setHideFinished(e.target.checked)}
+                    onChange={(e) => {
+                      setHideFinished(e.target.checked);
+                      if (
+                        e.target.checked &&
+                        ["completed", "cancelled"].includes(status)
+                      )
+                        setStatus("");
+                    }}
                   />
                   {translate("Hide completed and cancelled")}
                 </label>
-                {view === "board" && (
+                {view === "board" && !personal && (
                   <select
                     aria-label={translate("Group tasks")}
                     value={group}
@@ -175,7 +260,9 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
               {!tasks.length && (
                 <Empty>
                   {translate(
-                    "No tasks match. Create a task or sync Feishu to get started.",
+                    personal
+                      ? "No assignments match. Add a task for yourself or browse team tasks."
+                      : "No tasks match. Create a task or sync Feishu to get started.",
                   )}
                 </Empty>
               )}
@@ -190,7 +277,11 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                   mutate={mutate}
                 />
               ) : (
-                <div className="task-groups">
+                <div
+                  className={
+                    personal ? "task-groups personal-tasks" : "task-groups"
+                  }
+                >
                   {Object.entries(groups).map(([label, items]) => (
                     <section className="task-group" key={label}>
                       <h2>
@@ -202,11 +293,16 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                       {items.map((t) => (
                         <article className="task-card" key={t.id}>
                           <div className="card-meta">
-                            <Badge value={t.source} />
+                            <Badge value={t.status} />
                             <Badge value={t.priority} />
                             <LinkOut url={t.url} />
                           </div>
                           <h3>{t.title}</h3>
+                          {overdueTask(t) && (
+                            <span className="overdue-label">
+                              {translate("Overdue")}
+                            </span>
+                          )}
                           {isBlocked(t, index.byId) && (
                             <span className="blocked-label">
                               {translate("Blocked")}
@@ -236,34 +332,45 @@ export function TasksPage({ session, revision, mutate, busy }: PageProps) {
                             >
                               {translate("Explore graph")}
                             </button>
-                            {["pending", "in_progress", "paused"].includes(
-                              t.status,
-                            ) && (
-                              <>
-                                <button
-                                  disabled={busy}
-                                  onClick={() =>
-                                    void mutate(
-                                      `/tasks/${encodeURIComponent(t.id)}/complete`,
-                                    )
-                                  }
-                                >
-                                  <Check size={14} />
-                                  {translate("Complete")}
-                                </button>
-                                <button
-                                  disabled={busy}
-                                  onClick={() =>
-                                    void mutate(
-                                      `/tasks/${encodeURIComponent(t.id)}/cancel`,
-                                    )
-                                  }
-                                >
-                                  <X size={14} />
-                                  {translate("Cancel")}
-                                </button>
-                              </>
-                            )}
+                            <select
+                              aria-label={translate("Status for {title}", {
+                                title: t.title,
+                              })}
+                              value={t.status}
+                              disabled={busy || !session.connected}
+                              onChange={(event) => {
+                                const actions: Record<string, string> = {
+                                  pending: "reopen",
+                                  in_progress: "start",
+                                  paused: "pause",
+                                  completed: "complete",
+                                  cancelled: "cancel",
+                                };
+                                void mutate(
+                                  `/tasks/${encodeURIComponent(t.id)}/${actions[event.target.value]}`,
+                                );
+                              }}
+                            >
+                              {[
+                                "pending",
+                                "in_progress",
+                                "paused",
+                                "completed",
+                                "cancelled",
+                              ]
+                                .filter(
+                                  (status) =>
+                                    t.source === "bitable" ||
+                                    session.mode === "mock" ||
+                                    status === t.status ||
+                                    ["completed", "cancelled"].includes(status),
+                                )
+                                .map((status) => (
+                                  <option key={status} value={status}>
+                                    {translate(status)}
+                                  </option>
+                                ))}
+                            </select>
                             {session.user?.role === "admin" &&
                               (confirm === t.id ? (
                                 <>

@@ -78,8 +78,8 @@ async fn bootstrap(
 ) -> Result<Json<Value>> {
     let state = session(State(app.clone()), Extension(s.clone())).await?.0;
     let (path, result) = match q.page.as_str() {
-        "/" => ("/dashboard", dashboard(State(app.clone())).await),
-        "/tasks" => (
+        "/overview" => ("/dashboard", dashboard(State(app.clone())).await),
+        "/" | "/tasks" => (
             "/tasks?q=&status=",
             tasks(
                 State(app.clone()),
@@ -118,9 +118,10 @@ async fn bootstrap(
     Ok(Json(json!({"session":state,"data":data})))
 }
 async fn session(State(app): State<App>, Extension(s): Extension<Session>) -> Result<Json<Value>> {
+    let open_id = provider::open_id(&app, &s.subject).await?;
     let connected = !s.subject.is_empty() && provider::user_token(&app, &s.subject).await.is_ok();
     Ok(Json(
-        json!({"user":if s.subject.is_empty(){Value::Null}else{json!({"name":s.name,"role":s.role})},"csrf_token":s.csrf,"connected":connected,"mode":app.cfg.mode(),"oidc":app.cfg.oidc(),"team_name":app.cfg.value("FEISHU_TENANT_NAME","RoboMaster Research Team")}),
+        json!({"user":if s.subject.is_empty(){Value::Null}else{json!({"name":s.name,"role":s.role,"open_id":open_id})},"csrf_token":s.csrf,"connected":connected,"mode":app.cfg.mode(),"oidc":app.cfg.oidc(),"team_name":app.cfg.value("FEISHU_TENANT_NAME","RoboMaster Research Team")}),
     ))
 }
 async fn dashboard(State(app): State<App>) -> Result<Json<Value>> {
@@ -131,7 +132,7 @@ async fn dashboard(State(app): State<App>) -> Result<Json<Value>> {
     let sync = serde_json::from_str::<Value>(&app.db.setting("sync").await?).unwrap_or(Value::Null);
     let members = app.db.members().await?;
     Ok(Json(
-        json!({"stats":stats(&tasks),"important":events.into_iter().filter(|e|e.importance>=2).take(10).collect::<Vec<_>>(),"members":members,"sync":sync}),
+        json!({"tasks":tasks,"stats":stats(&tasks),"important":events.into_iter().filter(|e|e.importance>=2).take(10).collect::<Vec<_>>(),"members":members,"sync":sync}),
     ))
 }
 #[derive(Default, Deserialize)]
@@ -221,7 +222,7 @@ async fn action(
     Extension(s): Extension<Session>,
     Path((id, action)): Path<(String, String)>,
 ) -> Result<Json<Value>> {
-    if !["complete", "cancel", "delete"].contains(&action.as_str()) {
+    if !["complete", "cancel", "delete", "start", "pause", "reopen"].contains(&action.as_str()) {
         return Err(Error::bad("Invalid task action"));
     }
     if action == "delete" {
@@ -240,6 +241,9 @@ async fn action(
         match action.as_str() {
             "complete" => "completed",
             "cancel" => "cancelled",
+            "start" => "started",
+            "pause" => "paused",
+            "reopen" => "reopened",
             _ => "deleted",
         },
         &t,
