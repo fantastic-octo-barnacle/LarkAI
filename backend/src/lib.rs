@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod auth_cache;
 pub mod config;
+pub mod graph;
 pub mod model;
 pub mod notify;
 pub mod provider;

@@ -4,6 +4,8 @@ export interface Member {
   email: string;
 }
 export interface Task {
+  parent_ids?: string[];
+  dependency_ids?: string[];
   id: string;
   remote_id: string;
   source: string;

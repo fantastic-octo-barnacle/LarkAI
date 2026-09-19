@@ -195,6 +195,8 @@ fn member(v: &Value) -> Member {
 pub fn normalize_task(v: &Value) -> Task {
     let remote_id = text(&v["guid"]);
     Task {
+        parent_ids: vec![],
+        dependency_ids: vec![],
         id: format!("feishu:{remote_id}"),
         remote_id,
         source: "feishu".into(),
@@ -225,15 +227,55 @@ pub fn normalize_task(v: &Value) -> Task {
 fn field<'a>(app: &'a App, key: &str, fallback: &'a str) -> &'a str {
     app.cfg.value(key, fallback)
 }
+pub fn record_links(table: &str, value: &Value) -> Vec<String> {
+    let mut ids = Vec::new();
+    fn collect(value: &Value, ids: &mut Vec<String>) {
+        match value {
+            Value::String(id) if !id.is_empty() => ids.push(id.clone()),
+            Value::Array(values) => values.iter().for_each(|v| collect(v, ids)),
+            Value::Object(_) => {
+                if let Some(v) = value.get("record_ids") {
+                    collect(v, ids);
+                } else if let Some(id) = value.get("record_id").or_else(|| value.get("id")) {
+                    collect(id, ids);
+                }
+            }
+            _ => {}
+        }
+    }
+    collect(value, &mut ids);
+    ids.sort();
+    ids.dedup();
+    ids.into_iter()
+        .map(|id| format!("bitable:{table}:{id}"))
+        .collect()
+}
 pub fn normalize_record(app: &App, table: &str, v: &Value) -> Option<Task> {
     let f = &v["fields"];
-    let title = text(&f[field(app, "FEISHU_BITABLE_NAME_FIELD", "任务名称")]);
-    if title.is_empty() {
-        return None;
-    }
+    let name_field = field(app, "FEISHU_BITABLE_NAME_FIELD", "任务名称");
+    let mut title = text(&f[name_field]);
     let remote_id = text(&v["record_id"]);
     if remote_id.is_empty() {
         return None;
+    }
+    if title.trim().is_empty() {
+        // Keep unnamed rows in task tables, without importing unrelated tables.
+        if f.get(name_field).is_none()
+            && f.get(field(app, "FEISHU_BITABLE_PARENT_FIELD", "父记录"))
+                .is_none()
+            && table != app.cfg.get("FEISHU_BITABLE_SUBMIT_TABLE_ID")
+        {
+            return None;
+        }
+        let number = text(&f["任务ID"]);
+        title = format!(
+            "未命名任务 #{}",
+            if number.is_empty() {
+                &remote_id
+            } else {
+                &number
+            }
+        );
     }
     let status = text(
         &f[field(
@@ -257,6 +299,14 @@ pub fn normalize_record(app: &App, table: &str, v: &Value) -> Option<Task> {
         if s.is_empty() { vec![] } else { vec![s] }
     };
     Some(Task {
+        parent_ids: record_links(
+            table,
+            &f[field(app, "FEISHU_BITABLE_PARENT_FIELD", "父记录")],
+        ),
+        dependency_ids: record_links(
+            table,
+            &f[field(app, "FEISHU_BITABLE_DEPENDENCY_FIELD", "前置/依赖")],
+        ),
         id: format!("bitable:{table}:{remote_id}"),
         remote_id,
         source: "bitable".into(),
@@ -381,6 +431,8 @@ pub async fn create(app: &App, subject: &str, mut input: TaskInput) -> anyhow::R
     }
     let members = app.db.members().await?;
     let mut t = Task {
+        parent_ids: vec![],
+        dependency_ids: vec![],
         id: format!("mock:{}", uuid::Uuid::new_v4()),
         remote_id: String::new(),
         source: "mock".into(),
@@ -456,6 +508,82 @@ pub async fn create(app: &App, subject: &str, mut input: TaskInput) -> anyhow::R
     }
     app.db.put_task(&t).await?;
     Ok(t)
+}
+fn normalize_records(app: &App, table: &str, records: Vec<Value>) -> Vec<Task> {
+    let name = field(app, "FEISHU_BITABLE_NAME_FIELD", "任务名称");
+    let is_task_table = records.iter().any(|row| row["fields"].get(name).is_some());
+    records
+        .into_iter()
+        .filter_map(|mut row| {
+            // Bitable can omit empty cells entirely. Once this is known to be a task
+            // table, preserve every record so empty linked rows don't disappear.
+            if is_task_table && row["fields"].get(name).is_none() {
+                row["fields"][name] = Value::Null;
+            }
+            normalize_record(app, table, &row)
+        })
+        .collect()
+}
+pub async fn relationship_tasks(
+    app: &App,
+    subject: &str,
+    table: &str,
+) -> anyhow::Result<Vec<Task>> {
+    let token = user_token(app, subject).await?;
+    let b = base(app, &token).await?;
+    let rows = pages(
+        app,
+        &format!("/bitable/v1/apps/{b}/tables/{table}/records/search"),
+        "items",
+        &token,
+        true,
+    )
+    .await?;
+    Ok(normalize_records(app, table, rows))
+}
+pub async fn save_relationships(
+    app: &App,
+    subject: &str,
+    task: &mut Task,
+    input: &crate::graph::Relationships,
+) -> anyhow::Result<()> {
+    if app.cfg.live() {
+        let token = user_token(app, subject).await?;
+        let b = base(app, &token).await?;
+        let prefix = format!("bitable:{}:", task.table_id);
+        let remote = |ids: &[String]| {
+            ids.iter()
+                .map(|id| id.strip_prefix(&prefix).unwrap_or(id).to_owned())
+                .collect::<Vec<_>>()
+        };
+        let mut fields = json!({});
+        if task.parent_ids != input.parent_ids {
+            fields[field(app, "FEISHU_BITABLE_PARENT_FIELD", "父记录")] =
+                json!(remote(&input.parent_ids));
+        }
+        if task.dependency_ids != input.dependency_ids {
+            fields[field(app, "FEISHU_BITABLE_DEPENDENCY_FIELD", "前置/依赖")] =
+                json!(remote(&input.dependency_ids));
+        }
+        if fields.as_object().is_some_and(|f| !f.is_empty()) {
+            call(
+                app,
+                "PUT",
+                &format!(
+                    "/bitable/v1/apps/{b}/tables/{}/records/{}",
+                    task.table_id, task.remote_id
+                ),
+                &token,
+                Some(json!({"fields":fields})),
+            )
+            .await?;
+        }
+    }
+    task.parent_ids = input.parent_ids.clone();
+    task.dependency_ids = input.dependency_ids.clone();
+    task.updated_at = now();
+    app.db.put_task(task).await?;
+    Ok(())
 }
 pub async fn action(app: &App, subject: &str, t: &mut Task, action: &str) -> anyhow::Result<()> {
     if app.cfg.live() {
@@ -570,10 +698,8 @@ async fn collect_bitable(app: &App, token: &str) -> anyhow::Result<usize> {
             true,
         )
         .await?;
-        for r in records {
-            if let Some(t) = normalize_record(app, &id, &r) {
-                tasks.push((t.id.clone(), t));
-            }
+        for t in normalize_records(app, &id, records) {
+            tasks.push((t.id.clone(), t));
         }
     }
     let n = tasks.len();
@@ -680,6 +806,16 @@ pub async fn sync(app: &App, subject: &str) -> anyhow::Result<Value> {
                     warnings.push(format!("{name}: {e} Previous data retained."));
                 }
             }
+        }
+    }
+    let tasks = app.db.tasks().await?;
+    for (label, hierarchy) in [("Dependency", false), ("Hierarchy", true)] {
+        let cycles = crate::graph::cycle_members(&tasks, hierarchy);
+        if !cycles.is_empty() {
+            warnings.push(format!(
+                "{label} cycles detected: {}. Review these relationships in the task graph.",
+                cycles.join(", ")
+            ));
         }
     }
     let result = json!({"last_sync":now(),"sources":sources,"warnings":warnings});

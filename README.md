@@ -68,7 +68,7 @@ frontend/e2e/      Playwright browser tests
 deploy/            Docker Compose and deployment helpers
 ```
 
-[Architecture](docs/ARCHITECTURE.md) · [Feishu setup](docs/FEISHU_SETUP.md) · [Collection](docs/COLLECTION.md) · [Task operations](docs/INTERACTIVE_TASKS.md) · [Email](docs/EMAIL_NOTIFICATIONS.md)
+[Task graph](docs/TASK_GRAPH.md) · [Architecture](docs/ARCHITECTURE.md) · [Feishu setup](docs/FEISHU_SETUP.md) · [Collection](docs/COLLECTION.md) · [Task operations](docs/INTERACTIVE_TASKS.md) · [Email](docs/EMAIL_NOTIFICATIONS.md)
 
 ### Authentication and Feishu permissions
 

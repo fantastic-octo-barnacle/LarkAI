@@ -35,6 +35,7 @@ pub fn router(app: App) -> Router {
         .route("/api/logout", post(auth::logout))
         .route("/api/dashboard", get(dashboard))
         .route("/api/tasks", get(tasks).post(create))
+        .route("/api/tasks/{id}/relationships", post(relationships))
         .route("/api/tasks/{id}/{action}", post(action))
         .route("/api/task-options", get(options))
         .route("/api/timeline", get(timeline))
@@ -177,6 +178,43 @@ async fn create(
     let t = provider::create(&app, &s.subject, input).await?;
     notify::task(&app, "created", &t, &s.name).await;
     Ok((StatusCode::CREATED, Json(t)))
+}
+async fn relationships(
+    State(app): State<App>,
+    Extension(s): Extension<Session>,
+    Path(id): Path<String>,
+    Json(mut input): Json<crate::graph::Relationships>,
+) -> Result<Json<Task>> {
+    auth::require_connection(&app, &s).await?;
+    let _lock = app.sync_lock.lock().await;
+    let mut task = app
+        .db
+        .task(&id)
+        .await?
+        .ok_or(Error(StatusCode::NOT_FOUND, "Task not found".into()))?;
+    if task.source != "bitable" && (app.cfg.live() || task.source != "mock") {
+        return Err(Error::bad(
+            "Relationship editing is supported for Bitable tasks only",
+        ));
+    }
+    let mut tasks = app.db.tasks().await?;
+    // Read the source table before validation so external changes are considered.
+    if app.cfg.live() {
+        tasks = provider::relationship_tasks(&app, &s.subject, &task.table_id).await?;
+        task = tasks.iter().find(|t| t.id == id).cloned().ok_or(Error(
+            StatusCode::NOT_FOUND,
+            "Task no longer exists in Feishu".into(),
+        ))?;
+    }
+    if !input.unchanged_since(&task) {
+        return Err(Error(
+            StatusCode::CONFLICT,
+            "Relationships changed. Sync and reopen the editor before saving.".into(),
+        ));
+    }
+    input.validate(&task, &tasks).map_err(Error::bad)?;
+    provider::save_relationships(&app, &s.subject, &mut task, &input).await?;
+    Ok(Json(task))
 }
 async fn action(
     State(app): State<App>,

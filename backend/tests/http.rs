@@ -629,3 +629,308 @@ async fn only_existing_assets_receive_immutable_private_caching() {
     assert_eq!(headers["cache-control"], "no-store");
     tokio::fs::remove_dir_all(dir).await.unwrap();
 }
+
+#[tokio::test]
+async fn relationships_validate_cycles_conflicts_and_auth_without_changing_task_fields() {
+    let app = app().await;
+    let router = web::router(app.clone());
+    let (cookie, csrf) = login(&router).await;
+    let mut tasks = Vec::new();
+    for title in [
+        "Test parent",
+        "Test design",
+        "Test assembly",
+        "Test verification",
+    ] {
+        let (_, _, task) = request(
+            &router,
+            "POST",
+            "/api/tasks",
+            &cookie,
+            &csrf,
+            Some(json!({"title":title,"description":"Keep this unchanged"})),
+        )
+        .await;
+        tasks.push(serde_json::from_value::<Task>(task).unwrap());
+    }
+    let p = &tasks[0].id;
+    let a = &tasks[1].id;
+    let b = &tasks[2].id;
+    let c = &tasks[3].id;
+    let input = |parent: Vec<&String>, deps: Vec<&String>| json!({"parent_ids":parent,"dependency_ids":deps,"expected_parent_ids":[],"expected_dependency_ids":[]});
+    let path = format!("/api/tasks/{b}/relationships");
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &path,
+            &cookie,
+            "wrong",
+            Some(input(vec![p], vec![a]))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &path,
+            "",
+            "",
+            Some(input(vec![p], vec![a]))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    let (status, _, saved) = request(
+        &router,
+        "POST",
+        &path,
+        &cookie,
+        &csrf,
+        Some(input(vec![p], vec![a])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["dependency_ids"], json!([a]));
+    assert_eq!(saved["parent_ids"], json!([p]));
+    assert_eq!(saved["description"], "Keep this unchanged");
+    assert_eq!(saved["status"], "pending");
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &path,
+            &cookie,
+            &csrf,
+            Some(input(vec![], vec![]))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &format!("/api/tasks/{c}/relationships"),
+            &cookie,
+            &csrf,
+            Some(input(vec![], vec![b]))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, _, error) = request(
+        &router,
+        "POST",
+        &format!("/api/tasks/{a}/relationships"),
+        &cookie,
+        &csrf,
+        Some(input(vec![], vec![c])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(error["error"].as_str().unwrap().contains("cycle"));
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &format!("/api/tasks/{p}/relationships"),
+            &cookie,
+            &csrf,
+            Some(input(vec![b], vec![]))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &format!("/api/tasks/{a}/relationships"),
+            &cookie,
+            &csrf,
+            Some(input(vec![], vec![a]))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let unknown = "mock:unknown".to_string();
+    assert_eq!(
+        request(
+            &router,
+            "POST",
+            &format!("/api/tasks/{a}/relationships"),
+            &cookie,
+            &csrf,
+            Some(input(vec![], vec![&unknown]))
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let cleared = json!({"parent_ids":[],"dependency_ids":[],"expected_parent_ids":[p],"expected_dependency_ids":[a]});
+    assert_eq!(
+        request(&router, "POST", &path, &cookie, &csrf, Some(cleared))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    assert!(
+        app.db
+            .task(a)
+            .await
+            .unwrap()
+            .unwrap()
+            .dependency_ids
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn imported_relationships_keep_unnamed_tasks_and_detect_external_cycles() {
+    let app = app().await;
+    let row = json!({"record_id":"a","fields":{"任务名称":null,"任务ID":"017","父记录":[{"record_ids":["parent"]}],"前置/依赖":["b",{"id":"b"}]}});
+    let a = provider::normalize_record(&app, "table", &row).unwrap();
+    assert_eq!(a.title, "未命名任务 #017");
+    assert_eq!(a.parent_ids, vec!["bitable:table:parent"]);
+    assert_eq!(a.dependency_ids, vec!["bitable:table:b"]);
+    let b = provider::normalize_record(
+        &app,
+        "table",
+        &json!({"record_id":"b","fields":{"任务名称":"Test B","前置/依赖":[{"record_ids":["a"]}]}}),
+    )
+    .unwrap();
+    let c = provider::normalize_record(
+        &app,
+        "table",
+        &json!({"record_id":"c","fields":{"任务名称":"Test C","前置/依赖":["b"]}}),
+    )
+    .unwrap();
+    assert_eq!(
+        larkai::graph::cycle_members(&[a.clone(), b, c], false),
+        vec!["bitable:table:a", "bitable:table:b"]
+    );
+    let mut old = serde_json::to_value(a).unwrap();
+    old.as_object_mut().unwrap().remove("parent_ids");
+    old.as_object_mut().unwrap().remove("dependency_ids");
+    let task: Task = serde_json::from_value(old).unwrap();
+    assert!(task.parent_ids.is_empty() && task.dependency_ids.is_empty());
+}
+
+#[tokio::test]
+async fn relationship_writeback_only_updates_changed_link_fields() {
+    let mut app = app().await;
+    let upstream = Router::new().route(
+        "/open-apis/bitable/v1/apps/base1/tables/table2/records/rec1",
+        axum::routing::put(|axum::Json(body): axum::Json<Value>| async move {
+            assert_eq!(body, json!({"fields":{"前置/依赖":["rec2","rec3"]}}));
+            axum::Json(json!({"code":0,"data":{}}))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+    app.cfg.0.insert("FEISHU_MODE".into(), "live".into());
+    app.cfg
+        .0
+        .insert("FEISHU_BITABLE_APP_TOKEN".into(), "base1".into());
+    app.cfg
+        .0
+        .insert("FEISHU_BASE_URL".into(), format!("http://{address}"));
+    provider::save_connection(
+        &app,
+        "subject",
+        "ou_user",
+        &json!({"access_token":"token","expires_at":i64::MAX}),
+    )
+    .await
+    .unwrap();
+    let mut task = provider::normalize_record(
+        &app,
+        "table2",
+        &json!({"record_id":"rec1","fields":{"任务名称":"Test","父记录":["parent"]}}),
+    )
+    .unwrap();
+    let input = larkai::graph::Relationships {
+        parent_ids: task.parent_ids.clone(),
+        dependency_ids: vec!["bitable:table2:rec2".into(), "bitable:table2:rec3".into()],
+        expected_parent_ids: task.parent_ids.clone(),
+        expected_dependency_ids: vec![],
+    };
+    provider::save_relationships(&app, "subject", &mut task, &input)
+        .await
+        .unwrap();
+    assert_eq!(task.dependency_ids.len(), 2);
+    server.abort();
+}
+
+#[tokio::test]
+async fn live_relationship_validation_reads_external_changes_before_writing() {
+    let mut app = app().await;
+    let a = provider::normalize_record(
+        &app,
+        "table",
+        &json!({"record_id":"a","fields":{"任务名称":"Test A"}}),
+    )
+    .unwrap();
+    app.db.put_task(&a).await.unwrap();
+    // The cache has no links; the live table has B depending on A. Adding A->B
+    // must be rejected using the fresh graph, before any upstream PUT occurs.
+    let upstream = Router::new().route(
+        "/open-apis/bitable/v1/apps/base/tables/table/records/search",
+        axum::routing::post(|| async {
+            axum::Json(json!({"code":0,"data":{"items":[
+            {"record_id":"a","fields":{"任务名称":"Test A"}},
+            {"record_id":"b","fields":{"任务名称":"Test B","前置/依赖":[{"record_ids":["a"]}]}}
+        ],"has_more":false}}))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, upstream).await.unwrap() });
+    app.cfg.0.insert("FEISHU_MODE".into(), "live".into());
+    app.cfg
+        .0
+        .insert("FEISHU_BITABLE_APP_TOKEN".into(), "base".into());
+    app.cfg
+        .0
+        .insert("FEISHU_BASE_URL".into(), format!("http://{address}"));
+    let session = Session {
+        id: "graph-session".into(),
+        subject: "graph-user".into(),
+        role: "member".into(),
+        csrf: "graph-csrf".into(),
+        ..Default::default()
+    };
+    save(&app, &session).await.unwrap();
+    provider::save_connection(
+        &app,
+        "graph-user",
+        "ou_graph",
+        &json!({"access_token":"token","expires_at":i64::MAX}),
+    )
+    .await
+    .unwrap();
+    let router = web::router(app.clone());
+    let (status,_,error) = request(&router,"POST","/api/tasks/bitable:table:a/relationships","larkai=graph-session","graph-csrf",Some(json!({"parent_ids":[],"dependency_ids":["bitable:table:b"],"expected_parent_ids":[],"expected_dependency_ids":[]}))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{error}");
+    assert!(error["error"].as_str().unwrap().contains("cycle"));
+    assert!(
+        app.db
+            .task(&a.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .dependency_ids
+            .is_empty()
+    );
+    server.abort();
+}

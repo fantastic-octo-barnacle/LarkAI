@@ -43,6 +43,10 @@ pub struct Member {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
+    #[serde(default)]
+    pub parent_ids: Vec<String>,
+    #[serde(default)]
+    pub dependency_ids: Vec<String>,
     pub remote_id: String,
     pub source: String,
     pub table_id: String,
